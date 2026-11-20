@@ -1,0 +1,11 @@
+fastembed==0.9.1
+fastapi==0.165.0
+uvicorn==0.54.0
+python-multipart==0.0.34
+chromadb==1.5.9
+rank-bm25==0.2.2
+pypdf==7.1.1
+python-docx==1.2.0
+openpyxl==3.1.5
+defusedxml==0.7.1
+openai==3.57.0
