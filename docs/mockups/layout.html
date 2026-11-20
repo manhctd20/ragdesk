@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>layout</title><style>body{margin:0;padding:24px;background:#1b1d21;color:#e8e8ea;font-family:system-ui,sans-serif}.options{display:grid;gap:24px}.option{border:1px solid #3a3d44;border-radius:12px;padding:16px}.letter{display:inline-block;font-weight:600;margin-bottom:8px}.subtitle{color:#a8abb3}:root{--bg-primary:#fff;--bg-secondary:#f3f3f5;--bg-tertiary:#e6e6ea;--border:#d4d4da;--text-primary:#1b1d21;--text-secondary:#4a4d55;--text-tertiary:#7a7d85;--accent:#d9480f;--selected-bg:#ffe8dc}</style></head><body>
+<style>
+  .mk{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-primary);font-size:12px;line-height:1.45;color:var(--text-primary)}
+  .mk .row{display:flex;min-height:330px}
+  .mk .side{width:150px;background:var(--bg-secondary);border-right:1px solid var(--border);padding:10px;display:flex;flex-direction:column;gap:6px}
+  .mk .side .new{background:var(--accent);color:#fff;border-radius:6px;padding:5px 8px;text-align:center;font-weight:600}
+  .mk .side .h{color:var(--text-tertiary);font-size:10px;text-transform:uppercase;margin-top:6px}
+  .mk .side .it{padding:4px 6px;border-radius:5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mk .side .it.on{background:var(--bg-tertiary);color:var(--text-primary)}
+  .mk .side .foot{margin-top:auto;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:6px}
+  .mk .main{flex:1;display:flex;flex-direction:column;padding:12px;gap:10px;min-width:0}
+  .mk .q{align-self:flex-end;background:var(--bg-tertiary);border-radius:12px;padding:6px 10px;max-width:80%}
+  .mk .a{max-width:95%}
+  .mk .cite{display:inline-block;background:var(--selected-bg);color:var(--accent);border-radius:4px;padding:0 4px;font-size:10px;font-weight:600}
+  .mk .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .mk .chip{border:1px solid var(--border);border-radius:8px;padding:5px 7px;background:var(--bg-secondary);font-size:11px}
+  .mk .chip b{display:block;font-size:11px}
+  .mk .chip span{color:var(--text-tertiary)}
+  .mk .input{margin-top:auto;border:1px solid var(--border);border-radius:12px;padding:8px 10px;display:flex;align-items:center;gap:8px;background:var(--bg-secondary)}
+  .mk .input .ph{flex:1;color:var(--text-tertiary)}
+  .mk .tog{border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;border:1px solid var(--border)}
+  .mk .tog.in{background:#e8f5e9;color:#1b5e20;border-color:#a5d6a7}
+  .mk .send{background:var(--accent);color:#fff;border-radius:8px;padding:3px 8px}
+  .mk .panel{width:190px;border-left:1px solid var(--border);background:var(--bg-secondary);padding:10px;display:flex;flex-direction:column;gap:8px}
+  .mk .panel .src{border:1px solid var(--border);border-radius:8px;padding:6px;background:var(--bg-primary)}
+  .mk .panel .src.on{border-color:var(--accent)}
+  .mk .hl{background:#fff3b0;color:#333;padding:0 2px}
+  .mk .big{border:1px solid var(--border);border-radius:14px;padding:10px 12px;display:flex;gap:8px;align-items:center;background:var(--bg-secondary);margin:0 auto;width:85%}
+  .mk .top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary)}
+  .mk .list{display:flex;flex-direction:column;gap:6px;width:85%;margin:0 auto}
+  .mk .res{border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:var(--bg-secondary)}
+  .mk .res .m{color:var(--text-tertiary);font-size:10px}
+  .opt-grid{display:grid;grid-template-columns:1fr;gap:18px}
+</style>
+
+<h2>Màn hình chính: bạn thích bố cục nào?</h2>
+<p class="subtitle">Cả 3 cùng nội dung mẫu: một câu hỏi về quy trình nghỉ phép, câu trả lời có trích nguồn. Bấm để chọn (có thể chọn nhiều nếu muốn kết hợp), rồi góp ý ở khung chat.</p>
+
+<div class="options opt-grid" data-multiselect>
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Kiểu Open WebUI: lịch sử bên trái, nguồn là thẻ nhỏ dưới câu trả lời</h3>
+      <p>Quen thuộc với người đã dùng ChatGPT/Open WebUI. Gọn, mọi thứ trong một cột.</p>
+      <div class="mk"><div class="row">
+        <div class="side">
+          <div class="new">+ Cuộc hỏi mới</div>
+          <div class="h">Hôm nay</div>
+          <div class="it on">Quy trình nghỉ phép</div>
+          <div class="it">Mẫu hợp đồng thử việc</div>
+          <div class="h">Tuần trước</div>
+          <div class="it">Định mức công tác phí</div>
+          <div class="foot">📁 Tài liệu (128)</div>
+        </div>
+        <div class="main">
+          <div class="q">Nghỉ phép năm cần báo trước mấy ngày?</div>
+          <div class="a">Nhân viên cần gửi đơn trên hệ thống <b>ít nhất 3 ngày làm việc</b> trước ngày nghỉ <span class="cite">1</span>. Nếu nghỉ từ 5 ngày trở lên thì cần trưởng phòng duyệt <span class="cite">2</span>.
+            <div class="chips">
+              <div class="chip"><b>1 · NoiQuy_2026.docx</b><span>Mục 4.2 · Nghỉ phép</span></div>
+              <div class="chip"><b>2 · QuyTrinhDuyet.pdf</b><span>Trang 7</span></div>
+            </div>
+          </div>
+          <div class="input"><span class="ph">Hỏi về tài liệu nội bộ…</span><span class="tog in">🔒 Chỉ nội bộ</span><span class="send">Gửi</span></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>3 cột: thêm khung xem nguồn bên phải, đoạn trích được tô vàng</h3>
+      <p>Bấm số trích dẫn là thấy ngay đoạn gốc để kiểm chứng. Hợp khi cần đối chiếu kỹ; chật hơn trên màn nhỏ.</p>
+      <div class="mk"><div class="row">
+        <div class="side">
+          <div class="new">+ Cuộc hỏi mới</div>
+          <div class="h">Hôm nay</div>
+          <div class="it on">Quy trình nghỉ phép</div>
+          <div class="it">Mẫu hợp đồng thử việc</div>
+          <div class="foot">📁 Tài liệu (128)</div>
+        </div>
+        <div class="main">
+          <div class="q">Nghỉ phép năm cần báo trước mấy ngày?</div>
+          <div class="a">Nhân viên cần gửi đơn <b>ít nhất 3 ngày làm việc</b> trước ngày nghỉ <span class="cite">1</span>. Nghỉ từ 5 ngày trở lên cần trưởng phòng duyệt <span class="cite">2</span>.</div>
+          <div class="input"><span class="ph">Hỏi về tài liệu nội bộ…</span><span class="tog in">🔒 Chỉ nội bộ</span><span class="send">Gửi</span></div>
+        </div>
+        <div class="panel">
+          <b>Nguồn (2)</b>
+          <div class="src on"><b>1 · NoiQuy_2026.docx</b><br><span style="color:var(--text-tertiary)">Mục 4.2</span><br>…người lao động phải <span class="hl">gửi đơn ít nhất 03 ngày làm việc</span> trước…</div>
+          <div class="src"><b>2 · QuyTrinhDuyet.pdf</b><br><span style="color:var(--text-tertiary)">Trang 7</span><br>…trường hợp nghỉ từ 05 ngày…</div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Kiểu tra cứu: một ô hỏi lớn, câu trả lời + danh sách đoạn tài liệu bên dưới</h3>
+      <p>Giống trang tìm kiếm hơn là chat. Hợp khi mỗi lần chỉ hỏi một câu, ít hỏi nối tiếp.</p>
+      <div class="mk">
+        <div class="top"><b>📚 Tra cứu tài liệu</b><span>📁 Tài liệu · 🕘 Đã hỏi</span></div>
+        <div class="main" style="min-height:290px">
+          <div class="big"><span class="ph" style="flex:1">Nghỉ phép năm cần báo trước mấy ngày?</span><span class="tog in">🔒 Chỉ nội bộ</span><span class="send">Hỏi</span></div>
+          <div class="list">
+            <div class="a"><b>Trả lời:</b> gửi đơn ít nhất 3 ngày làm việc trước ngày nghỉ <span class="cite">1</span>; từ 5 ngày cần trưởng phòng duyệt <span class="cite">2</span>.</div>
+            <div class="res"><b>1 · NoiQuy_2026.docx</b> <span class="m">Mục 4.2</span><br>…người lao động phải <span class="hl">gửi đơn ít nhất 03 ngày làm việc</span> trước…</div>
+            <div class="res"><b>2 · QuyTrinhDuyet.pdf</b> <span class="m">Trang 7</span><br>…trường hợp nghỉ từ 05 ngày trở lên…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:14px">Nút <b>🔒 Chỉ nội bộ</b> cạnh ô hỏi là công tắc gửi ra ngoài. Màn "chế độ nội bộ" và trang quản lý tài liệu mình sẽ phác ở bước sau.</p>
+
+</body></html>

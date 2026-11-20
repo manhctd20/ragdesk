@@ -1,0 +1,8 @@
+data/
+.venv/
+node_modules/
+frontend/dist/
+__pycache__/
+.env
+.hallmark/
+.pytest_cache/
