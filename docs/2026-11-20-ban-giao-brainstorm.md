@@ -1,6 +1,6 @@
 # Bàn giao: hệ thống hỏi–đáp tài liệu nội bộ (RAG), giai đoạn brainstorm
 
-> **Trạng thái (25/11/2026):** brainstorm **đã xong**. Thiết kế (`docs/2026-11-20-thiet-ke.md`) và kế hoạch (`docs/2026-11-20-ke-hoach.md`) đã được người dùng duyệt; backend đợt 1 đã code xong. Tài liệu này giữ lại làm bối cảnh: lý do của từng quyết định.
+> **Trạng thái (25/11/2026):** brainstorm **đã xong**. Thiết kế (`docs/2026-11-20-thiet-ke.md`) và kế hoạch (`docs/2026-11-20-ke-hoach.md`) đã được người dùng duyệt; đợt 1 đã code xong. Tài liệu này giữ lại làm bối cảnh: lý do của từng quyết định.
 >
 > Quy ước trong tài liệu:
 > - **[Người dùng chốt]**: người dùng đã nói rõ.
