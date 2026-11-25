@@ -4,6 +4,20 @@ Hệ thống hỏi–đáp trên tài liệu nội bộ (RAG) cho team, chạy t
 
 Thiết kế chi tiết: `docs/2026-11-20-thiet-ke.md`. Lý do của từng quyết định: `docs/2026-11-20-ban-giao-brainstorm.md`.
 
+## Ảnh chụp màn hình
+
+Ảnh chụp từ bản chạy thật với ba tài liệu mẫu tự tạo (nội dung giả).
+
+![Màn hỏi–đáp, giao diện sáng: các đoạn liên quan kèm tên file, vị trí và từ khoá được tô màu](docs/screenshots/hoi-dap-sang.png)
+
+| Giao diện tối | Trang Tài liệu (đã mở khoá quản trị) |
+|---|---|
+| ![Màn hỏi–đáp, giao diện tối](docs/screenshots/hoi-dap-toi.png) | ![Trang Tài liệu: khung tải lên, lọc theo thư mục, danh sách file](docs/screenshots/tai-lieu.png) |
+
+| Điện thoại | Menu trên điện thoại |
+|---|---|
+| <img src="docs/screenshots/dien-thoai.png" width="280" alt="Màn hỏi–đáp trên điện thoại"> | <img src="docs/screenshots/dien-thoai-menu.png" width="280" alt="Menu thanh bên trên điện thoại"> |
+
 ## Làm được gì (đợt 1)
 
 **Nạp tài liệu** (trang Tài liệu, cần mật khẩu quản trị)
