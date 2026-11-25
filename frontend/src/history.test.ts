@@ -6,8 +6,10 @@ import {
   loadHistory,
   newId,
   saveHistory,
+  toHistory,
   upsertConversation,
   type Conversation,
+  type Turn,
 } from "./history";
 
 const RESULT: AskResult = { answer: null, sources: [], llm_error: null, message: "Chưa có tài liệu nào" };
@@ -138,5 +140,26 @@ describe("newId", () => {
     expect(a.length).toBeGreaterThan(0);
     expect(a).not.toBe(b);
     expect(a).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe("toHistory", () => {
+  it("keeps the last 3 turns, maps provider (missing → null) and never includes sources", () => {
+    const src = { id: "d:1", text: "t", meta: { doc_id: "d", filename: "f.pdf", folder: "x", file_type: "pdf" as const }, score: 1, matched: [] };
+    const turn = (n: number, extra: Partial<Turn> = {}): Turn => ({
+      question: `Câu ${n}`,
+      mode: "external",
+      askedAt: "2026-11-21T10:00:00Z",
+      result: { answer: `Đáp ${n}`, sources: [src], llm_error: null, message: null, query: `q${n}` },
+      ...extra,
+    });
+    const out = toHistory([turn(1), turn(2, { provider: "claude" }), turn(3, { mode: "internal", result: { answer: null, sources: [src], llm_error: null, message: null } }), turn(4, { provider: "gemini" })]);
+    expect(out).toEqual([
+      { question: "Câu 2", mode: "external", provider: "claude", answer: "Đáp 2" },
+      { question: "Câu 3", mode: "internal", provider: null, answer: null },
+      { question: "Câu 4", mode: "external", provider: "gemini", answer: "Đáp 4" },
+    ]);
+    expect(JSON.stringify(out)).not.toContain("sources");
+    expect(toHistory([])).toEqual([]);
   });
 });

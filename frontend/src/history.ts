@@ -1,6 +1,6 @@
-import type { AskResult, Mode } from "./api";
+import type { AskResult, HistoryTurn, Mode } from "./api";
 
-export interface Turn { question: string; mode: Mode; askedAt: string; result: AskResult }
+export interface Turn { question: string; mode: Mode; provider?: string | null; askedAt: string; result: AskResult }
 export interface Conversation { id: string; title: string; createdAt: string; updatedAt: string; turns: Turn[] }
 export type DayGroup = "Hôm nay" | "Hôm qua" | "Tuần trước" | "Cũ hơn";
 
@@ -55,6 +55,17 @@ export function groupByDay(list: Conversation[], now: Date = new Date()): { labe
   return ORDER.map((label) => ({ label, items: list.filter((c) => groupOf(c.updatedAt, now) === label) })).filter(
     (g) => g.items.length > 0,
   );
+}
+
+const HISTORY_TURNS = 3;
+
+export function toHistory(turns: Turn[]): HistoryTurn[] {
+  return turns.slice(-HISTORY_TURNS).map((t) => ({
+    question: t.question,
+    mode: t.mode,
+    provider: t.provider ?? null,
+    answer: t.result.answer,
+  }));
 }
 
 export function newId(): string {
