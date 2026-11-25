@@ -1,6 +1,6 @@
 # Thiết kế đợt 2A: nâng cấp chế độ AI ngoài
 
-> **Trạng thái (25/11/2026):** người dùng đã duyệt. Kế hoạch: `docs/2026-11-25-ke-hoach-dot-2a.md`.
+> **Trạng thái (26/11/2026):** đã triển khai trên nhánh `feat/dot-2a`. Kế hoạch: `docs/2026-11-25-ke-hoach-dot-2a.md`.
 > Nền: thiết kế đợt 1 `docs/2026-11-20-thiet-ke.md` (gọi tắt **TK1**). Đợt 2 gồm phần A (tài liệu này) rồi phần C (đăng nhập + phân quyền, thiết kế riêng sau). Phần B (OCR) để sau.
 > Quy ước: **[Người dùng chốt]** là điều người dùng đã nói; **[Claude đề xuất]** là đề xuất của Claude, đã trình bày trong lúc bàn và người dùng không phản đối, vẫn sửa được khi duyệt tài liệu này.
 

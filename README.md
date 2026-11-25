@@ -1,6 +1,6 @@
 # Tra cứu nội bộ
 
-Hệ thống hỏi–đáp trên tài liệu nội bộ (RAG) cho team, chạy trong mạng LAN. Quản trị nạp file PDF, Word, Excel. Mọi người gõ câu hỏi bằng tiếng Việt hoặc tiếng Anh và nhận lại các đoạn tài liệu liên quan nhất, kèm vị trí trong file. Quản trị có thể cho phép thêm chế độ "AI ngoài": Gemini viết câu trả lời từ các đoạn đó, có trích dẫn nguồn.
+Hệ thống hỏi–đáp trên tài liệu nội bộ (RAG) cho team, chạy trong mạng LAN. Quản trị nạp file PDF, Word, Excel. Mọi người gõ câu hỏi bằng tiếng Việt hoặc tiếng Anh và nhận lại các đoạn tài liệu liên quan nhất, kèm vị trí trong file. Quản trị có thể cho phép thêm chế độ "AI ngoài": Claude, OpenAI hoặc Gemini viết câu trả lời từ các đoạn đó, có trích dẫn nguồn.
 
 Thiết kế chi tiết: `docs/2026-11-20-thiet-ke.md`. Lý do của từng quyết định: `docs/2026-11-20-ban-giao-brainstorm.md`.
 
@@ -18,7 +18,7 @@ Thiết kế chi tiết: `docs/2026-11-20-thiet-ke.md`. Lý do của từng quy�
 |---|---|
 | <img src="docs/screenshots/dien-thoai.png" width="280" alt="Màn hỏi–đáp trên điện thoại"> | <img src="docs/screenshots/dien-thoai-menu.png" width="280" alt="Menu thanh bên trên điện thoại"> |
 
-## Làm được gì (đợt 1)
+## Làm được gì (đến đợt 2A)
 
 **Nạp tài liệu** (trang Tài liệu, cần mật khẩu quản trị)
 - Nhận `.pdf`, `.docx`, `.xlsx`, tối đa 20 MB mỗi file. Không nhận `.doc`, `.xls` đời cũ.
@@ -42,10 +42,17 @@ Thiết kế chi tiết: `docs/2026-11-20-thiet-ke.md`. Lý do của từng quy�
 
 **Hai chế độ trả lời** (công tắc cạnh ô hỏi)
 - **Chỉ nội bộ** (mặc định): chỉ trả các đoạn tìm được. Không gọi AI nào, tài liệu không rời máy chủ.
-- **AI ngoài** (Gemini): chỉ bật được khi quản trị cho phép. Người dùng bật cho từng câu hỏi, gửi xong thì công tắc tự về tắt.
-  - Gửi đi đúng ba thứ: câu hỏi, 5 đoạn tìm được, system prompt. Không bao giờ gửi cả file, tên thư mục hay lịch sử chat.
-  - Câu trả lời là văn bản thuần, có số trích dẫn `[1]`… và thẻ nguồn.
-  - Gọi Gemini lỗi thì vẫn hiện 5 đoạn, kèm một dòng báo lỗi.
+- **AI ngoài** (Claude, OpenAI hoặc Gemini): chỉ bật được khi quản trị cho phép. Người dùng bật cho từng câu hỏi, gửi xong thì công tắc tự về tắt.
+  - Quản trị khai key nhà nào thì nhà đó dùng được. Từ 2 nhà trở lên, cạnh công tắc có danh sách chọn nhà (Claude, OpenAI, Gemini); nhà đã chọn được nhớ trên trình duyệt. Nhãn của câu trả lời ghi rõ nhà, ví dụ "AI ngoài (Claude)".
+  - Gửi đi cho nhà đang chọn: câu hỏi, 5 đoạn tìm được, system prompt, và **câu hỏi cùng câu trả lời của các lượt AI ngoài trước đó trong cùng cuộc hỏi, chỉ những lượt đã hỏi chính nhà này** (lấy trong 3 lượt gần nhất). Không bao giờ gửi cả file hay tên thư mục. Lượt "Chỉ nội bộ" và lượt của nhà khác không bao giờ được gửi: máy chủ tự lọc, không tin giao diện.
+  - Câu trả lời hiện dần (stream), là văn bản thuần, có số trích dẫn `[1]`… và thẻ nguồn.
+  - Gọi AI lỗi thì vẫn hiện 5 đoạn, kèm một dòng báo lỗi. Lỗi giữa chừng thì giữ phần chữ đã nhận.
+
+**Hỏi nối tiếp** (trong cùng một cuộc hỏi)
+- Hỏi tiếp kiểu "thế ai duyệt?" sau "Nghỉ phép năm bao nhiêu ngày?" vẫn ra đúng. Mỗi lần hỏi, trình duyệt gửi kèm tối đa 3 lượt gần nhất.
+- **AI ngoài:** nếu có lượt AI ngoài trước đó của cùng nhà, máy chủ nhờ AI viết lại câu hỏi thành câu đủ nghĩa ("Nghỉ phép năm ai duyệt?") rồi mới tìm. Dòng nhỏ "Hiểu là: …" dưới câu hỏi cho thấy AI đã hiểu gì (chỉ hiện khi câu viết lại khác câu gốc). Bước viết lại lỗi thì dùng nguyên câu gốc. Câu trả lời cuối chỉ nhận câu đã viết lại và 5 đoạn, không nhận lại lịch sử.
+- **Chỉ nội bộ:** không gọi AI. Khi tìm, câu hỏi ngay trước được ghép vào trước câu hiện tại. Từ khoá được tô màu chỉ tính theo câu hiện tại.
+- Công tắc vẫn tự về "Chỉ nội bộ" sau mỗi câu hỏi. Hỏi nối tiếp bằng AI ngoài thì bật lại công tắc cho câu đó; quên bật thì câu hỏi chạy ở chế độ nội bộ.
 
 **Giao diện**
 - Thanh bên có "Cuộc hỏi mới", lịch sử hỏi chia theo ngày (Hôm nay / Hôm qua / Tuần trước / Cũ hơn), mục Tài liệu và nút đổi sáng/tối.
@@ -95,11 +102,16 @@ Mở `http://<địa chỉ máy chủ>:8000/`.
 - **Nên đặt `FASTEMBED_CACHE_PATH`.** Không đặt thì model nằm trong `/tmp/fastembed_cache` và mất sau mỗi lần khởi động lại máy, nên lần chạy sau lại phải tải lại.
 - **`DATA_DIR` tính theo thư mục đang đứng.** Chạy từ `backend/` thì phải để `../data`. Để mặc định `./data` thì dữ liệu sẽ nằm trong `backend/data`.
 
-**Bật chế độ AI ngoài:** thêm ba biến sau. Tên model không có mặc định, tự điền theo tên Google đang cung cấp.
+**Bật chế độ AI ngoài:** thêm `ALLOW_EXTERNAL=true` và khai key cùng tên model của ít nhất một nhà. **Tên model không có mặc định**, tự điền theo tên nhà đó đang cung cấp. Model suy luận của OpenAI (o-series, gpt-5…) dùng được.
 
 ```bash
-ALLOW_EXTERNAL=true GEMINI_API_KEY=<key> GEMINI_MODEL=<tên model>
+ALLOW_EXTERNAL=true \
+ANTHROPIC_API_KEY=<key> CLAUDE_MODEL=<tên model> \
+OPENAI_API_KEY=<key> OPENAI_MODEL=<tên model> \
+GEMINI_API_KEY=<key> GEMINI_MODEL=<tên model>
 ```
+
+Khai một, hai hoặc cả ba nhà đều được. Thứ tự nhà luôn là Claude, OpenAI, Gemini; nhà đầu tiên đã khai là mặc định.
 
 ## Biến môi trường
 
@@ -107,21 +119,23 @@ ALLOW_EXTERNAL=true GEMINI_API_KEY=<key> GEMINI_MODEL=<tên model>
 |---|---|---|---|
 | `ADMIN_PASSWORD` | có | | Mật khẩu quản trị. Thiếu thì máy chủ không khởi động. **Chỉ dùng ký tự ASCII (không dấu)**: header HTTP không mang được chữ có dấu, và trang Tài liệu từ chối mật khẩu có dấu |
 | `ALLOW_EXTERNAL` | | `false` | Công tắc tổng cho chế độ AI ngoài. Đặt `true` để bật (không phân biệt hoa thường) |
-| `GEMINI_API_KEY` + `GEMINI_MODEL` | | | Khai đủ cả hai, cộng `ALLOW_EXTERNAL=true`, thì AI ngoài mới bật được |
+| `ANTHROPIC_API_KEY` + `CLAUDE_MODEL` | | | Khai đủ cả hai thì Claude dùng được (cần `ALLOW_EXTERNAL=true`). Tên model không có mặc định |
+| `OPENAI_API_KEY` + `OPENAI_MODEL` | | | Như trên, cho OpenAI. Hỗ trợ cả model suy luận (o-series, gpt-5…) |
+| `GEMINI_API_KEY` + `GEMINI_MODEL` | | | Như trên, cho Gemini |
 | `DATA_DIR` | | `./data` | Nơi lưu file gốc, SQLite và index |
 | `MAX_UPLOAD_MB` | | `20` | Cỡ tối đa mỗi file |
 | `FASTEMBED_CACHE_PATH` | | `/tmp/fastembed_cache` | Nơi lưu model embedding. Nên đặt ra ngoài `/tmp` |
 | `ANONYMIZED_TELEMETRY` | | | Đặt `False` để Chroma không gửi telemetry |
 
-Đợt 1 chỉ hỗ trợ Gemini. Các biến của Claude và OpenAI (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`…) bị bỏ qua.
+Chỉ khai key mà thiếu tên model (hoặc ngược lại) thì nhà đó coi như chưa khai. Không có nhà nào khai đủ thì công tắc AI ngoài bị khoá dù `ALLOW_EXTERNAL=true`.
 
 ## Sử dụng
 
 **Người hỏi**
 1. Mở trang chủ, gõ câu hỏi, nhấn Enter để gửi. Shift+Enter để xuống dòng. Bộ gõ tiếng Việt không bị gửi nhầm khi đang gõ dấu.
 2. Kết quả là các đoạn liên quan nhất, kèm tên file và vị trí. Mở file gốc để đọc thêm.
-3. Muốn có câu trả lời viết sẵn thì bật công tắc "AI ngoài" trước khi gửi. Công tắc bị khoá kèm dòng giải thích nghĩa là quản trị chưa cho phép.
-4. Lịch sử hỏi nằm ở thanh bên trái. Mỗi câu hỏi là độc lập: AI không nhớ câu trước.
+3. Muốn có câu trả lời viết sẵn thì bật công tắc "AI ngoài" trước khi gửi (có từ 2 nhà thì chọn nhà ở danh sách bên cạnh). Công tắc bị khoá kèm dòng giải thích nghĩa là quản trị chưa cho phép.
+4. Lịch sử hỏi nằm ở thanh bên trái. Hỏi tiếp trong cùng cuộc hỏi thì máy chủ hiểu theo các lượt trước (xem "Hỏi nối tiếp" ở trên). Với AI ngoài, câu trả lời hiện dần.
 
 **Quản trị**
 1. Vào **Tài liệu**, bấm "Mở khoá quản trị", nhập `ADMIN_PASSWORD`. Trạng thái mở khoá giữ đến khi đóng tab hoặc bấm "Khoá lại".
@@ -196,29 +210,33 @@ backend/
   search.py   embedding, Chroma, BM25, RRF
   worker.py   luồng index nền (một file một lúc), thay file, khôi phục khi khởi động
   store.py    bảng documents (SQLite)
-  llm.py      gọi Gemini qua client chuẩn OpenAI
+  llm.py      gọi Claude / OpenAI / Gemini qua client chuẩn OpenAI: stream câu trả lời, viết lại câu hỏi
+  ask.py      luồng một lần hỏi: lọc lịch sử, viết lại câu, tìm, stream (sự kiện meta / delta / error / done)
   eval.py     đo chất lượng tìm kiếm
 frontend/src/
   App.tsx, Sidebar.tsx, Chat.tsx, Answer.tsx, TaiLieu.tsx
-  api.ts      gọi API     history.ts  lịch sử + theme     format.ts  tô màu, trích dẫn
+  api.ts      gọi API + đọc SSE     history.ts  lịch sử + theme     format.ts  tô màu, trích dẫn
 docs/         thiết kế, kế hoạch, bản phác giao diện
 ```
 
-## Giới hạn của đợt 1
+## Giới hạn hiện tại
 
 - **Không phân quyền.** Ai vào được mạng nội bộ cũng đọc được nội dung mọi tài liệu qua câu hỏi. Chỉ nạp tài liệu cả team được xem.
 - **Mật khẩu quản trị dùng chung** và đi qua HTTP thường trong LAN. Nên đặt sau HTTPS khi triển khai thật.
 - **PDF scan (chỉ có ảnh) không đọc được**, file báo lỗi. Chưa có OCR.
 - **Tìm từ khoá tách theo từng tiếng**, nên kém với từ ghép tiếng Việt. Phần tìm theo nghĩa bù lại phần lớn.
 - **Không có ngưỡng "không liên quan":** đã có tài liệu thì luôn trả 5 đoạn, kể cả khi câu hỏi lạc đề.
-- **Mỗi câu hỏi độc lập**, không hỏi nối tiếp được. Câu trả lời AI ngoài không stream: chờ xong mới hiện cả khối.
+- **Hỏi nối tiếp chỉ nhìn 3 lượt gần nhất,** mỗi câu hỏi tối đa 2.000 ký tự và mỗi câu trả lời tối đa 8.000 ký tự (dài hơn thì bị cắt khi gửi). Đổi nhà giữa cuộc hỏi thì nhà mới chỉ nhận câu hỏi hiện tại, vì không được xem lượt của nhà khác. Ở chế độ nội bộ, đổi chủ đề trong cùng cuộc hỏi có thể làm tìm lệch vì câu trước vẫn được ghép vào.
+- **Chưa có nút "Dừng"** khi câu trả lời đang hiện dần. Mất kết nối giữa chừng thì lượt đó không được lưu, bấm "Thử lại".
 - **Index chạy trên CPU,** file lớn sẽ chậm.
-- **Lớp tương thích OpenAI của Gemini đang beta,** Google không cam kết giữ lâu dài.
+- **Cả ba nhà gọi qua cùng một client chuẩn OpenAI** (Claude và Gemini qua lớp tương thích của chính hãng). Lớp tương thích của Gemini đang beta, Google không cam kết giữ lâu dài.
+- **Tên model do quản trị tự khai,** không chọn được trên giao diện.
 - **Lịch sử chỉ nằm trên một trình duyệt,** không đồng bộ giữa các máy và chưa có nút xoá từng cuộc hỏi.
 
 ## Riêng tư
 
 - **Lịch sử hỏi đáp nằm trong localStorage của trình duyệt** và chứa nguyên văn các đoạn tài liệu đã tìm được. Máy dùng chung thì nên xoá dữ liệu trình duyệt sau khi dùng.
+- **Chế độ AI ngoài gửi nội dung ra bên ngoài.** Mỗi nhà chỉ nhận những gì đã được gửi cho chính nhà đó (câu hỏi, các đoạn liên quan, và các lượt AI ngoài trước đó của nhà đó). Nội dung lượt "Chỉ nội bộ" không bao giờ rời máy chủ.
 - **Font Geist tải từ Google Fonts.** Mỗi lần mở trang, trình duyệt gửi request tới Google. Mạng LAN không ra internet thì giao diện dùng font hệ thống, vẫn đọc được. Google Fonts có subset tiếng Việt cho Geist và Geist Mono (đã kiểm ngày 25/11/2026).
 
 ## Các đợt tiếp theo
@@ -226,13 +244,10 @@ docs/         thiết kế, kế hoạch, bản phác giao diện
 Danh sách dưới đây gom từ những mục thiết kế đã ghi "để đợt sau". **Chưa chốt thứ tự**: mỗi đợt sẽ brainstorm và duyệt thiết kế trước khi code, như đợt 1.
 
 **Đã có hướng làm trong thiết kế**
-- **Thêm Claude và OpenAI cho chế độ AI ngoài.** Cùng một client chuẩn OpenAI, chỉ đổi `base_url`, key và tên model. Khi quản trị khai từ 2 nhà trở lên, công tắc cạnh ô hỏi có thêm danh sách chọn nhà.
 - **Đăng nhập theo người và phân quyền theo thư mục.**
   - Thư mục đã được ghi vào metadata từng đoạn, nên lọc theo quyền không phải index lại.
   - Thay luôn mật khẩu quản trị dùng chung.
 - **OCR cho PDF scan,** thay cho việc báo lỗi như hiện nay.
-- **Hỏi nối tiếp có ngữ cảnh:** gửi kèm các lượt hỏi trước khi dùng AI ngoài.
-- **Stream câu trả lời AI ngoài,** nếu thấy chờ lâu khó chịu.
 
 **Làm khi có số liệu hoặc phần cứng**
 - **Reranker và tách từ ghép tiếng Việt** (ví dụ `underthesea`): chỉ làm khi `eval.py` với câu hỏi thật cho thấy tìm kiếm chưa đủ tốt.
