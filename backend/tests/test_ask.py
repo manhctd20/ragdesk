@@ -63,9 +63,22 @@ def test_internal_query_prepends_previous_question():
     assert f.find_calls == [("thế ai duyệt?", "thế ai duyệt?")]
 
 
-def test_external_drops_internal_turns():
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"mode": "internal", "provider": "claude", "answer": "x"},
+        {"mode": "external", "provider": "claude", "answer": ""},
+        {"mode": "external", "provider": "claude", "answer": None},
+        {"mode": "external", "provider": "gemini", "answer": "x"},
+        {"mode": "external", "provider": None, "answer": "x"},
+    ],
+    ids=["wrong-mode", "empty-answer", "none-answer", "other-provider", "none-provider"],
+)
+def test_external_drops_turn_failing_any_clause(bad):
+    # each bad turn differs from a valid one in exactly one clause
     f = Fakes()
-    run(f, history=[turn("BÍ-MẬT-NỘI-BỘ", mode="internal", provider=None, answer=None), turn("nghỉ phép năm")])
+    run(f, history=[{"question": "BÍ-MẬT-NỘI-BỘ", **bad}, turn("nghỉ phép năm")])
+    assert [t["question"] for t in f.rewrite_calls[0][1]] == ["nghỉ phép năm"]
     assert "BÍ-MẬT-NỘI-BỘ" not in repr(f.rewrite_calls) + repr(f.stream_calls) + repr(f.find_calls)
 
 
