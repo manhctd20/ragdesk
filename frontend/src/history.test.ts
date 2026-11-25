@@ -7,6 +7,8 @@ import {
   newId,
   saveHistory,
   toHistory,
+  HISTORY_QUESTION_MAX,
+  HISTORY_ANSWER_MAX,
   upsertConversation,
   type Conversation,
   type Turn,
@@ -161,5 +163,15 @@ describe("toHistory", () => {
     ]);
     expect(JSON.stringify(out)).not.toContain("sources");
     expect(toHistory([])).toEqual([]);
+  });
+
+  it("clips question and answer to the server limits, counting code points", () => {
+    const result = { answer: "đ".repeat(HISTORY_ANSWER_MAX) + "😀thừa", sources: [], llm_error: null, message: null };
+    const [out] = toHistory([{ question: "ê".repeat(HISTORY_QUESTION_MAX - 1) + "😀thừa", mode: "external", askedAt: "2026-11-21T10:00:00Z", result }]);
+    expect(Array.from(out.question)).toHaveLength(HISTORY_QUESTION_MAX);
+    expect(out.question.endsWith("😀")).toBe(true);
+    expect(out.answer).toBe("đ".repeat(HISTORY_ANSWER_MAX));
+    expect(HISTORY_QUESTION_MAX).toBe(2000);
+    expect(HISTORY_ANSWER_MAX).toBe(8000);
   });
 });

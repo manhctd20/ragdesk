@@ -58,13 +58,18 @@ export function groupByDay(list: Conversation[], now: Date = new Date()): { labe
 }
 
 const HISTORY_TURNS = 3;
+// Server rejects longer history fields with 422 (backend/app.py HistoryTurn); limits count code points like Python len().
+export const HISTORY_QUESTION_MAX = 2000;
+export const HISTORY_ANSWER_MAX = 8000;
+
+const clip = (s: string, max: number) => (s.length <= max ? s : Array.from(s).slice(0, max).join(""));
 
 export function toHistory(turns: Turn[]): HistoryTurn[] {
   return turns.slice(-HISTORY_TURNS).map((t) => ({
-    question: t.question,
+    question: clip(t.question, HISTORY_QUESTION_MAX),
     mode: t.mode,
     provider: t.provider ?? null,
-    answer: t.result.answer,
+    answer: t.result.answer === null ? null : clip(t.result.answer, HISTORY_ANSWER_MAX),
   }));
 }
 
