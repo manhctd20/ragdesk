@@ -59,3 +59,5 @@ export function formatWhen(iso: string, now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(t.getDate())}/${p(t.getMonth() + 1)}/${t.getFullYear()}`;
 }
+
+export const PROVIDER_LABEL: Record<string, string> = { claude: "Claude", openai: "OpenAI", gemini: "Gemini" };

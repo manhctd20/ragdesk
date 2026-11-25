@@ -45,14 +45,6 @@ export function getConfig(): Promise<Config> {
   return request<Config>("/api/config");
 }
 
-export function ask(question: string, mode: Mode): Promise<AskResult> {
-  return request<AskResult>("/api/ask", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, mode }),
-  });
-}
-
 const NO_CONNECTION = "Không kết nối được máy chủ";
 
 export async function askStream(req: AskRequest, onEvent: (e: AskEvent) => void): Promise<void> {

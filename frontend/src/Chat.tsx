@@ -2,8 +2,19 @@ import { ArrowUp, Lock, LockOpen, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import Answer from "./Answer";
-import { ApiError, ask, getConfig, type Config, type Mode } from "./api";
-import { newId, type Conversation, type Turn } from "./history";
+import { ApiError, askStream, getConfig, type AskResult, type Config, type Mode } from "./api";
+import { PROVIDER_LABEL } from "./format";
+import { newId, toHistory, type Conversation, type Turn } from "./history";
+
+export const PROVIDER_KEY = "tcnb:provider";
+
+function storedProvider(): string | null {
+  try {
+    return localStorage.getItem(PROVIDER_KEY);
+  } catch {
+    return null;
+  }
+}
 
 interface Props { conversations: Conversation[]; onSave: (c: Conversation) => void }
 
@@ -19,7 +30,8 @@ export default function Chat({ conversations, onSave }: Props) {
   const [navTo, setNavTo] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [pending, setPending] = useState<{ question: string; mode: Mode } | null>(null);
+  const [chosen, setChosen] = useState(storedProvider);
+  const [pending, setPending] = useState<{ question: string; mode: Mode; provider: string | null; result: AskResult } | null>(null);
   const [failed, setFailed] = useState<{ question: string; mode: Mode; message: string } | null>(null);
   const mounted = useRef(true);
   const end = useRef<HTMLDivElement>(null);
@@ -48,13 +60,26 @@ export default function Chat({ conversations, onSave }: Props) {
 
   if (paramId && !existing) return <p className="notice-page">Không tìm thấy cuộc hỏi này</p>;
 
+  const providers = config?.providers ?? [];
+  const provider = chosen && providers.includes(chosen) ? chosen : (providers[0] ?? null);
+
   async function run(question: string, mode: Mode) {
+    const used = mode === "external" ? provider : null;
+    let result: AskResult = { answer: null, sources: [], llm_error: null, message: null, query: null };
+    const show = () => mounted.current && setPending({ question, mode, provider: used, result });
     setFailed(null);
-    setPending({ question, mode });
+    show();
     try {
-      const result = await ask(question, mode);
+      await askStream({ question, mode, provider: used ?? undefined, history: toHistory(turns) }, (e) => {
+        if (e.type === "meta") result = { ...result, sources: e.sources, query: e.query, message: e.message };
+        else if (e.type === "delta") result = { ...result, answer: (result.answer ?? "") + e.text };
+        else if (e.type === "error") result = { ...result, llm_error: e.llm_error };
+        else return;
+        show();
+      });
+      // askStream resolves only after `done`; a cut stream throws and nothing is saved.
       const now = new Date().toISOString();
-      const next = [...turns, { question, mode, askedAt: now, result }];
+      const next = [...turns, { question, mode, provider: used, askedAt: now, result }];
       if (paramId) {
         setTurns(next);
         setPending(null);
@@ -81,7 +106,7 @@ export default function Chat({ conversations, onSave }: Props) {
   const allow = config?.allow_external === true;
   const ToggleIcon = external ? LockOpen : Lock;
   const LOCKED = "Quản trị chưa cho phép gửi ra ngoài";
-  const SENDS_OUT = "Câu hỏi và các đoạn liên quan sẽ gửi tới AI ngoài";
+  const SENDS_OUT = "Câu hỏi, các đoạn liên quan và các lượt AI ngoài trước đó sẽ gửi tới AI ngoài";
   const hint = config && !allow ? LOCKED : external ? SENDS_OUT : "Tài liệu không rời khỏi máy chủ";
 
   function onToggle() {
@@ -97,13 +122,14 @@ export default function Chat({ conversations, onSave }: Props) {
         {turns.map((t) => (
           <section key={t.askedAt} className="turn">
             <div className="q">{t.question}</div>
-            <Answer mode={t.mode} result={t.result} />
+            <Answer mode={t.mode} result={t.result} question={t.question} provider={t.provider} />
           </section>
         ))}
         {(pending ?? failed) && (
           <section className="turn">
             <div className="q">{(pending ?? failed)!.question}</div>
-            {pending && (
+            {pending && <Answer {...pending} />}
+            {pending && waiting(pending) && (
               <p className="wait" role="status">
                 {pending.mode === "external" ? "Đang viết câu trả lời…" : "Đang tìm…"}
               </p>
@@ -153,6 +179,28 @@ export default function Chat({ conversations, onSave }: Props) {
             <ToggleIcon className="ic" aria-hidden="true" />
             {external ? "AI ngoài" : "Chỉ nội bộ"}
           </button>
+          {providers.length >= 2 && (
+            <select
+              className="provider"
+              aria-label="Nhà cung cấp AI"
+              value={provider ?? ""}
+              disabled={!external}
+              onChange={(e) => {
+                setChosen(e.target.value);
+                try {
+                  localStorage.setItem(PROVIDER_KEY, e.target.value);
+                } catch {
+                  // storage unavailable: the choice lasts for this page only
+                }
+              }}
+            >
+              {providers.map((p) => (
+                <option key={p} value={p}>
+                  {PROVIDER_LABEL[p] ?? p}
+                </option>
+              ))}
+            </select>
+          )}
           <span className="hint">{hint}</span>
           <button type="submit" className="send" aria-label="Gửi câu hỏi" disabled={!canSend}>
             <ArrowUp className="ic" aria-hidden="true" />
@@ -162,4 +210,9 @@ export default function Chat({ conversations, onSave }: Props) {
       <div className="toast" role="status">{toast}</div>
     </div>
   );
+}
+
+function waiting({ mode, result }: { mode: Mode; result: AskResult }): boolean {
+  if (result.message) return false;
+  return mode === "external" ? !result.answer && !result.llm_error : result.sources.length === 0;
 }

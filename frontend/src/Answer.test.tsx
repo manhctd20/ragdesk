@@ -21,10 +21,10 @@ function result(over: Partial<AskResult>): AskResult {
   return { answer: null, sources: [], llm_error: null, message: null, ...over };
 }
 
-function show(mode: Mode, r: AskResult) {
+function show(mode: Mode, r: AskResult, extra: { question?: string; provider?: string | null } = {}) {
   return render(
     <MemoryRouter>
-      <Answer mode={mode} result={r} />
+      <Answer mode={mode} result={r} {...extra} />
     </MemoryRouter>,
   );
 }
@@ -77,6 +77,31 @@ describe("Answer", () => {
     expect(screen.getByText(/Chưa có tài liệu nào/)).toBeInTheDocument();
     const links = screen.getAllByRole("link");
     expect(links.some((a) => a.getAttribute("href") === "/tai-lieu")).toBe(true);
+  });
+
+  it("shows 'Hiểu là' only when query differs from the question", () => {
+    const answer = "Trưởng phòng duyệt [1].";
+    const sources = [src(1)];
+    const view = show("external", result({ answer, sources, query: "Nghỉ phép năm ai duyệt?" }), { question: "Thế ai duyệt?" });
+    expect(screen.getByText("Hiểu là: Nghỉ phép năm ai duyệt?")).toBeInTheDocument();
+    view.unmount();
+
+    const same = show("external", result({ answer, sources, query: "Thế ai duyệt?" }), { question: "Thế ai duyệt?" });
+    expect(screen.queryByText(/Hiểu là/)).toBeNull();
+    same.unmount();
+
+    show("external", result({ answer, sources, query: null }), { question: "Thế ai duyệt?" });
+    expect(screen.queryByText(/Hiểu là/)).toBeNull();
+  });
+
+  it("label names the provider", () => {
+    const r = result({ answer: "Trả lời [1].", sources: [src(1)] });
+    const view = show("external", r, { provider: "claude" });
+    expect(screen.getByText("AI ngoài (Claude): câu trả lời tổng hợp từ các đoạn")).toBeInTheDocument();
+    view.unmount();
+
+    show("external", r, { provider: "openai" });
+    expect(screen.getByText("AI ngoài (OpenAI): câu trả lời tổng hợp từ các đoạn")).toBeInTheDocument();
   });
 
   describe("untrusted text is never rendered as HTML", () => {

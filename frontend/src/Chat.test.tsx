@@ -5,7 +5,7 @@ import { Link, MemoryRouter, Route, Routes, useLocation, useParams } from "react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import Chat from "./Chat";
-import type { AskResult, Config, Source } from "./api";
+import type { AskEvent, AskResult, Config, Source } from "./api";
 import { HISTORY_KEY, upsertConversation, type Conversation } from "./history";
 
 const QUESTION = "Nghỉ phép năm cần báo trước mấy ngày?";
@@ -19,10 +19,34 @@ const SOURCE: Source = {
 };
 
 const INTERNAL: AskResult = { answer: null, sources: [SOURCE], llm_error: null, message: null };
-const EXTERNAL: AskResult = { answer: "Cần trưởng phòng duyệt [1].", sources: [SOURCE], llm_error: null, message: null };
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+const frame = ({ type, ...data }: AskEvent) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+const SSE_HEADERS = { "Content-Type": "text/event-stream" };
+
+function sse(events: AskEvent[]): Response {
+  return new Response(events.map(frame).join(""), { status: 200, headers: SSE_HEADERS });
+}
+
+function liveSse() {
+  let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({ start: (c) => void (ctrl = c) });
+  const enc = new TextEncoder();
+  return {
+    response: new Response(body, { status: 200, headers: SSE_HEADERS }),
+    send: (...events: AskEvent[]) => events.forEach((e) => ctrl.enqueue(enc.encode(frame(e)))),
+    close: () => ctrl.close(),
+  };
+}
+
+const META: AskEvent = { type: "meta", sources: [SOURCE], query: null, message: null };
+const DONE: AskEvent = { type: "done" };
+const internalSse = () => sse([META, DONE]);
+const externalSse = () =>
+  sse([META, { type: "delta", text: "Cần trưởng phòng " }, { type: "delta", text: "duyệt [1]." }, DONE]);
+const SENDS_OUT = "Câu hỏi, các đoạn liên quan và các lượt AI ngoài trước đó sẽ gửi tới AI ngoài";
 
 type AskHandler = (body: unknown) => Response | Promise<Response>;
 
@@ -32,7 +56,7 @@ function stubFetch(config: Partial<Config>, onAsk: AskHandler) {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const path = new URL(url, "http://localhost").pathname;
     if (path === "/api/config") return json(200, cfg);
-    if (path === "/api/ask") return onAsk(JSON.parse(String(init?.body)));
+    if (path === "/api/ask/stream") return onAsk(JSON.parse(String(init?.body)));
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -136,7 +160,7 @@ afterEach(() => {
 describe("Chat", () => {
   it("locks the external toggle when the server does not allow it, and explains in a toast on tap", async () => {
     const user = userEvent.setup();
-    stubFetch({ allow_external: false }, () => json(200, INTERNAL));
+    stubFetch({ allow_external: false }, () => internalSse());
     show("/");
     expect(await screen.findByText(/Quản trị chưa cho phép gửi ra ngoài/)).toBeInTheDocument();
     expect(toggle()).toHaveAttribute("aria-disabled", "true");
@@ -147,17 +171,17 @@ describe("Chat", () => {
 
   it("warns in a toast when the external toggle is switched on", async () => {
     const user = userEvent.setup();
-    stubFetch({ allow_external: true, providers: ["gemini"] }, () => json(200, EXTERNAL));
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () => externalSse());
     show("/");
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
     await user.click(toggle());
-    expect(screen.getAllByRole("status").some((el) => el.textContent === "Câu hỏi và các đoạn liên quan sẽ gửi tới AI ngoài")).toBe(true);
+    expect(screen.getAllByRole("status").some((el) => el.textContent === SENDS_OUT)).toBe(true);
   });
 
-  it("sends exactly {question, mode:'external'} and switches the toggle back off", async () => {
+  it("sends exactly {question, mode:'external', provider, history} and switches the toggle back off", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubFetch({ allow_external: true, providers: ["gemini"] }, () => json(200, EXTERNAL));
-    const { onSave } = show("/c/cu", [existing("cu")]);
+    const fetchMock = stubFetch({ allow_external: true, providers: ["gemini"] }, () => externalSse());
+    const { onSave } = show("/");
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
     expect(toggle()).toHaveAttribute("aria-pressed", "false");
     await user.click(toggle());
@@ -170,23 +194,32 @@ describe("Chat", () => {
     expect(calls).toHaveLength(1);
     const [, init] = calls[0];
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toStrictEqual({ question: QUESTION, mode: "external" });
-    expect(String(init?.body)).not.toContain("Câu hỏi cũ về định mức");
+    expect(JSON.parse(String(init?.body))).toStrictEqual({ question: QUESTION, mode: "external", provider: "gemini", history: [] });
     expect(toggle()).toHaveAttribute("aria-pressed", "false");
-    expect(onSave).toHaveBeenCalled();
-    const saved: Conversation = onSave.mock.calls.at(-1)![0];
-    expect(saved.id).toBe("cu");
-    expect(saved.turns.map((t) => t.question)).toEqual(["Câu hỏi cũ về định mức", QUESTION]);
-    expect(saved.turns[1].mode).toBe("external");
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved: Conversation = onSave.mock.calls[0][0];
+    expect(saved.turns[0]).toMatchObject({ question: QUESTION, mode: "external", provider: "gemini" });
+    expect(saved.turns[0].result).toMatchObject({ answer: "Cần trưởng phòng duyệt [1].", query: null });
+
+    await waitFor(() => expect(screen.getByTestId("path")).toHaveTextContent(`/c/${saved.id}`));
+    await user.type(box(), "Thế ai duyệt?{Enter}");
+    await waitFor(() => expect(askCalls(fetchMock)).toHaveLength(2));
+    expect(JSON.parse(String(askCalls(fetchMock)[1][1]?.body))).toStrictEqual({
+      question: "Thế ai duyệt?",
+      mode: "internal",
+      history: [{ question: QUESTION, mode: "external", provider: "gemini", answer: "Cần trưởng phòng duyệt [1]." }],
+    });
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+    expect((onSave.mock.calls[1][0] as Conversation).turns.map((t) => t.question)).toEqual([QUESTION, "Thế ai duyệt?"]);
   });
 
   it("sends mode 'internal' by default", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubFetch({ allow_external: true, providers: ["gemini"] }, () => json(200, INTERNAL));
+    const fetchMock = stubFetch({ allow_external: true, providers: ["gemini"] }, () => internalSse());
     show("/");
     await user.type(box(), `${QUESTION}{Enter}`);
     await waitFor(() => expect(askCalls(fetchMock)).toHaveLength(1));
-    expect(JSON.parse(String(askCalls(fetchMock)[0][1]?.body))).toStrictEqual({ question: QUESTION, mode: "internal" });
+    expect(JSON.parse(String(askCalls(fetchMock)[0][1]?.body))).toStrictEqual({ question: QUESTION, mode: "internal", history: [] });
   });
 
   it("shows 'Đang tìm…' while an internal question is pending", async () => {
@@ -196,7 +229,7 @@ describe("Chat", () => {
     show("/");
     await user.type(box(), `${QUESTION}{Enter}`);
     expect(await screen.findByText(/Đang tìm…/)).toBeInTheDocument();
-    await act(async () => pending.resolve(json(200, INTERNAL)));
+    await act(async () => pending.resolve(internalSse()));
     await waitFor(() => expect(screen.queryByText(/Đang tìm…/)).toBeNull());
   });
 
@@ -209,7 +242,7 @@ describe("Chat", () => {
     await user.click(toggle());
     await user.type(box(), `${QUESTION}{Enter}`);
     expect(await screen.findByText(/Đang viết câu trả lời…/)).toBeInTheDocument();
-    await act(async () => pending.resolve(json(200, EXTERNAL)));
+    await act(async () => pending.resolve(externalSse()));
   });
 
   it("on network failure shows 'Thử lại', does not save, and retry succeeds", async () => {
@@ -218,7 +251,7 @@ describe("Chat", () => {
     const fetchMock = stubFetch({}, () => {
       n += 1;
       if (n === 1) return Promise.reject(new TypeError("Failed to fetch"));
-      return json(200, INTERNAL);
+      return internalSse();
     });
     const { onSave } = show("/");
     await user.type(box(), `${QUESTION}{Enter}`);
@@ -229,14 +262,14 @@ describe("Chat", () => {
     await user.click(retry);
     expect(await screen.findByText(/NoiQuy_2026\.docx/, {}, { timeout: 3000 })).toBeInTheDocument();
     expect(askCalls(fetchMock)).toHaveLength(2);
-    expect(JSON.parse(String(askCalls(fetchMock)[1][1]?.body))).toStrictEqual({ question: QUESTION, mode: "internal" });
+    expect(JSON.parse(String(askCalls(fetchMock)[1][1]?.body))).toStrictEqual({ question: QUESTION, mode: "internal", history: [] });
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /Thử lại/ })).toBeNull();
   });
 
   it("calls onSave with a new conversation and moves the URL to /c/<id>", async () => {
     const user = userEvent.setup();
-    stubFetch({}, () => json(200, INTERNAL));
+    stubFetch({}, () => internalSse());
     const { onSave } = show("/");
     await user.type(box(), `${QUESTION}{Enter}`);
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -249,7 +282,7 @@ describe("Chat", () => {
 
   it("App persists the asked question to localStorage", async () => {
     const user = userEvent.setup();
-    stubFetch({}, () => json(200, INTERNAL));
+    stubFetch({}, () => internalSse());
     render(
       <MemoryRouter initialEntries={["/"]}>
         <App />
@@ -262,7 +295,7 @@ describe("Chat", () => {
 
   it("disables send and does not call the API for a whitespace-only question", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubFetch({}, () => json(200, INTERNAL));
+    const fetchMock = stubFetch({}, () => internalSse());
     show("/");
     expect(sendButton()).toBeDisabled();
     await user.type(box(), "   \t ");
@@ -274,7 +307,7 @@ describe("Chat", () => {
 
   it("does not send on Enter during IME composition; Shift+Enter inserts a newline", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubFetch({}, () => json(200, INTERNAL));
+    const fetchMock = stubFetch({}, () => internalSse());
     show("/");
     await user.type(box(), "nghỉ phép");
     fireEvent.keyDown(box(), { key: "Enter", code: "Enter", keyCode: 229, isComposing: true });
@@ -286,13 +319,13 @@ describe("Chat", () => {
   });
 
   it("shows 'Không tìm thấy cuộc hỏi này' for an unknown /c/:id", async () => {
-    stubFetch({}, () => json(200, INTERNAL));
+    stubFetch({}, () => internalSse());
     show("/c/khong-co", [existing("cu")]);
     expect(await screen.findByText(/Không tìm thấy cuộc hỏi này/)).toBeInTheDocument();
   });
 
   it("renders the turns of an existing conversation", async () => {
-    stubFetch({}, () => json(200, INTERNAL));
+    stubFetch({}, () => internalSse());
     show("/c/cu", [existing("cu")]);
     expect(await screen.findByText("Câu hỏi cũ về định mức")).toBeInTheDocument();
     expect(screen.getAllByText(/NoiQuy_2026\.docx/).length).toBeGreaterThanOrEqual(1);
@@ -320,9 +353,136 @@ describe("Chat", () => {
     await screen.findByText(/Đang tìm…/);
     await user.click(screen.getByRole("link", { name: "Đi tới cuộc cũ" }));
     expect(screen.getByTestId("path")).toHaveTextContent("/c/cu");
-    await act(async () => pending.resolve(json(200, INTERNAL)));
+    await act(async () => pending.resolve(internalSse()));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect((onSave.mock.calls[0][0] as Conversation).turns[0].question).toBe(QUESTION);
     expect(screen.getByTestId("path")).toHaveTextContent("/c/cu");
+  });
+
+  it("streams text progressively", async () => {
+    const user = userEvent.setup();
+    const live = liveSse();
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () => live.response);
+    const { onSave } = show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    await user.click(toggle());
+    await user.type(box(), `${QUESTION}{Enter}`);
+    expect(await screen.findByText(/Đang viết câu trả lời…/)).toBeInTheDocument();
+
+    await act(async () => live.send(META, { type: "delta", text: "Cần " }));
+    expect(await screen.findByText("Cần")).toBeInTheDocument();
+    expect(screen.queryByText(/Đang viết câu trả lời…/)).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+
+    await act(async () => {
+      live.send({ type: "delta", text: "trưởng phòng duyệt [1]." }, DONE);
+      live.close();
+    });
+    expect(await screen.findByText(/Cần trưởng phòng duyệt/)).toBeInTheDocument();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows sources as soon as meta arrives", async () => {
+    const user = userEvent.setup();
+    const live = liveSse();
+    stubFetch({}, () => live.response);
+    const { onSave } = show("/");
+    await user.type(box(), `${QUESTION}{Enter}`);
+    expect(await screen.findByText(/Đang tìm…/)).toBeInTheDocument();
+    await act(async () => live.send(META));
+    expect(await screen.findByText(/NoiQuy_2026\.docx/)).toBeInTheDocument();
+    expect(screen.queryByText(/Đang tìm…/)).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+    await act(async () => {
+      live.send(DONE);
+      live.close();
+    });
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  });
+
+  it("error mid-stream keeps text and shows the error, then saves", async () => {
+    const user = userEvent.setup();
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () =>
+      sse([META, { type: "delta", text: "Cần trưởng " }, { type: "error", llm_error: "Không gọi được AI ngoài (RateLimitError)" }, DONE]),
+    );
+    const { onSave } = show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    await user.click(toggle());
+    await user.type(box(), `${QUESTION}{Enter}`);
+    expect(await screen.findByText(/Không gọi được AI ngoài \(RateLimitError\)/)).toBeInTheDocument();
+    expect(screen.getByText("Cần trưởng")).toBeInTheDocument();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect((onSave.mock.calls[0][0] as Conversation).turns[0].result).toMatchObject({
+      answer: "Cần trưởng ",
+      llm_error: "Không gọi được AI ngoài (RateLimitError)",
+    });
+  });
+
+  it("stream cut before done shows Thử lại and does not save", async () => {
+    const user = userEvent.setup();
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () => sse([META, { type: "delta", text: "Cần " }]));
+    const { onSave } = show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    await user.click(toggle());
+    await user.type(box(), `${QUESTION}{Enter}`);
+    expect(await screen.findByRole("button", { name: /Thử lại/ })).toBeInTheDocument();
+    expect(screen.getByText(/Không kết nối được máy chủ/)).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("provider select appears only with 2+ providers", async () => {
+    const user = userEvent.setup();
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () => externalSse());
+    const one = show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    one.unmount();
+
+    const fetchMock = stubFetch({ allow_external: true, providers: ["claude", "openai", "gemini"] }, () => externalSse());
+    show("/");
+    const select = await screen.findByRole("combobox", { name: "Nhà cung cấp AI" });
+    expect(Array.from((select as HTMLSelectElement).options, (o) => o.textContent)).toEqual(["Claude", "OpenAI", "Gemini"]);
+    expect(select).toHaveValue("claude");
+    expect(select).toBeDisabled();
+    await user.click(toggle());
+    expect(select).toBeEnabled();
+    await user.selectOptions(select, "openai");
+    expect(localStorage.getItem("tcnb:provider")).toBe("openai");
+    await user.type(box(), `${QUESTION}{Enter}`);
+    await waitFor(() => expect(askCalls(fetchMock)).toHaveLength(1));
+    expect(JSON.parse(String(askCalls(fetchMock)[0][1]?.body))).toMatchObject({ mode: "external", provider: "openai" });
+  });
+
+  it("remembered provider that is no longer configured falls back to the first", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("tcnb:provider", "openai");
+    const fetchMock = stubFetch({ allow_external: true, providers: ["gemini"] }, () => externalSse());
+    show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    await user.click(toggle());
+    await user.type(box(), `${QUESTION}{Enter}`);
+    await waitFor(() => expect(askCalls(fetchMock)).toHaveLength(1));
+    expect(JSON.parse(String(askCalls(fetchMock)[0][1]?.body))).toMatchObject({ mode: "external", provider: "gemini" });
+  });
+
+  it("old history without provider/query still renders", async () => {
+    stubFetch({}, () => internalSse());
+    const at = new Date(2026, 10, 20, 9).toISOString();
+    const old = {
+      id: "cu",
+      title: "Câu hỏi cũ",
+      createdAt: at,
+      updatedAt: at,
+      turns: [{ question: "Câu hỏi cũ", mode: "external", askedAt: at, result: { answer: "Trả lời cũ [1].", sources: [SOURCE], llm_error: null, message: null } }],
+    };
+    localStorage.setItem(HISTORY_KEY, JSON.stringify([old]));
+    render(
+      <MemoryRouter initialEntries={["/c/cu"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/Trả lời cũ/)).toBeInTheDocument();
+    expect(screen.getByText("AI ngoài: câu trả lời tổng hợp từ các đoạn")).toBeInTheDocument();
+    expect(screen.queryByText(/Hiểu là/)).toBeNull();
   });
 });
