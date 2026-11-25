@@ -344,6 +344,29 @@ describe("TaiLieu: delete", () => {
     expect(screen.queryByText("NoiQuy_2026.docx")).toBeNull();
   });
 
+  it("after delete re-fetches until the server drops the row, so counts and folder tabs update", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    sessionStorage.setItem(ADMIN_KEY, PW);
+    const ONLY = doc("d-only", "KhamSucKhoe.xlsx", "Test");
+    let gone = false;
+    stubFetch({
+      list: () => json(200, gone
+        ? { documents: [], folders: [] }
+        : { documents: [ONLY], folders: [{ name: "Test", count: 1 }] }),
+    });
+    show();
+    await screen.findByText("KhamSucKhoe.xlsx");
+    expect(tab("Test")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Xoá KhamSucKhoe.xlsx" }));
+    await user.click(screen.getByRole("button", { name: "Xoá file" }));
+    await waitFor(() => expect(screen.queryByText("KhamSucKhoe.xlsx")).toBeNull());
+
+    gone = true; // the worker finished deleting on the server
+    await act(() => vi.advanceTimersByTimeAsync(2100));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Test/ })).toBeNull());
+  });
+
   it("409 shows the server detail", async () => {
     const user = userEvent.setup();
     sessionStorage.setItem(ADMIN_KEY, PW);
@@ -562,6 +585,15 @@ describe("TaiLieu: upload", () => {
     expect(fd.get("folder")).toBe("Phòng Kế hoạch");
     expect(new Headers(up.init?.headers).get("X-Admin-Password")).toBe(PW);
     await waitFor(() => expect(api.lists().length).toBeGreaterThan(before));
+  });
+
+  it("clears the typed folder once the upload finishes", async () => {
+    const { api, input, user } = await ready("/tai-lieu");
+    const folder = screen.getByLabelText("Thư mục");
+    await user.type(folder, "Test");
+    await user.upload(input, pdf("QuyDinh.pdf"));
+    await waitFor(() => expect(api.uploads()).toHaveLength(1));
+    await waitFor(() => expect(folder).toHaveValue(""));
   });
 
   it.each([

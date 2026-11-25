@@ -134,18 +134,31 @@ afterEach(() => {
 });
 
 describe("Chat", () => {
-  it("locks the external toggle when the server does not allow it", async () => {
+  it("locks the external toggle when the server does not allow it, and explains in a toast on tap", async () => {
+    const user = userEvent.setup();
     stubFetch({ allow_external: false }, () => json(200, INTERNAL));
     show("/");
     expect(await screen.findByText(/Quản trị chưa cho phép gửi ra ngoài/)).toBeInTheDocument();
-    expect(toggle()).toBeDisabled();
+    expect(toggle()).toHaveAttribute("aria-disabled", "true");
+    await user.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("status").some((el) => el.textContent === "Quản trị chưa cho phép gửi ra ngoài")).toBe(true);
+  });
+
+  it("warns in a toast when the external toggle is switched on", async () => {
+    const user = userEvent.setup();
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () => json(200, EXTERNAL));
+    show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    await user.click(toggle());
+    expect(screen.getAllByRole("status").some((el) => el.textContent === "Câu hỏi và các đoạn liên quan sẽ gửi tới AI ngoài")).toBe(true);
   });
 
   it("sends exactly {question, mode:'external'} and switches the toggle back off", async () => {
     const user = userEvent.setup();
     const fetchMock = stubFetch({ allow_external: true, providers: ["gemini"] }, () => json(200, EXTERNAL));
     const { onSave } = show("/c/cu", [existing("cu")]);
-    await waitFor(() => expect(toggle()).toBeEnabled());
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
     expect(toggle()).toHaveAttribute("aria-pressed", "false");
     await user.click(toggle());
     expect(toggle()).toHaveAttribute("aria-pressed", "true");
@@ -192,7 +205,7 @@ describe("Chat", () => {
     const pending = deferred<Response>();
     stubFetch({ allow_external: true, providers: ["gemini"] }, () => pending.promise);
     show("/");
-    await waitFor(() => expect(toggle()).toBeEnabled());
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
     await user.click(toggle());
     await user.type(box(), `${QUESTION}{Enter}`);
     expect(await screen.findByText(/Đang viết câu trả lời…/)).toBeInTheDocument();
@@ -291,7 +304,7 @@ describe("Chat", () => {
       json(403, { detail: "Chưa cho phép gửi ra ngoài" }),
     );
     const { onSave } = show("/");
-    await waitFor(() => expect(toggle()).toBeEnabled());
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
     await user.click(toggle());
     await user.type(box(), `${QUESTION}{Enter}`);
     expect(await screen.findByText(/Chưa cho phép gửi ra ngoài/)).toBeInTheDocument();

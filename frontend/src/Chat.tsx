@@ -17,6 +17,7 @@ export default function Chat({ conversations, onSave }: Props) {
   const [config, setConfig] = useState<Config | null>(null);
   const [external, setExternal] = useState(false);
   const [navTo, setNavTo] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [pending, setPending] = useState<{ question: string; mode: Mode } | null>(null);
   const [failed, setFailed] = useState<{ question: string; mode: Mode; message: string } | null>(null);
@@ -34,6 +35,12 @@ export default function Chat({ conversations, onSave }: Props) {
   useEffect(() => {
     if (navTo && conversations.some((c) => c.id === navTo)) navigate(`/c/${navTo}`, { replace: true });
   }, [navTo, conversations, navigate]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end" });
@@ -73,12 +80,16 @@ export default function Chat({ conversations, onSave }: Props) {
 
   const allow = config?.allow_external === true;
   const ToggleIcon = external ? LockOpen : Lock;
-  const hint =
-    config && !allow
-      ? "Quản trị chưa cho phép gửi ra ngoài"
-      : external
-        ? "Câu hỏi và các đoạn liên quan sẽ gửi tới AI ngoài"
-        : "Tài liệu không rời khỏi máy chủ";
+  const LOCKED = "Quản trị chưa cho phép gửi ra ngoài";
+  const SENDS_OUT = "Câu hỏi và các đoạn liên quan sẽ gửi tới AI ngoài";
+  const hint = config && !allow ? LOCKED : external ? SENDS_OUT : "Tài liệu không rời khỏi máy chủ";
+
+  function onToggle() {
+    if (!config) return;
+    if (!allow) return setToast(LOCKED);
+    if (!external) setToast(SENDS_OUT);
+    setExternal(!external);
+  }
 
   return (
     <div className="chat">
@@ -136,8 +147,8 @@ export default function Chat({ conversations, onSave }: Props) {
             type="button"
             className="toggle"
             aria-pressed={external}
-            disabled={!allow}
-            onClick={() => setExternal((v) => !v)}
+            aria-disabled={!allow}
+            onClick={onToggle}
           >
             <ToggleIcon className="ic" aria-hidden="true" />
             {external ? "AI ngoài" : "Chỉ nội bộ"}
@@ -148,6 +159,7 @@ export default function Chat({ conversations, onSave }: Props) {
           </button>
         </div>
       </form>
+      <div className="toast" role="status">{toast}</div>
     </div>
   );
 }

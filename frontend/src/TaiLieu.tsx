@@ -52,6 +52,8 @@ export default function TaiLieu() {
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const removedRef = useRef(removed);
+  removedRef.current = removed;
   const dataRef = useRef<Listing | null>(null);
   const mounted = useRef(true);
 
@@ -90,7 +92,7 @@ export default function TaiLieu() {
         setData(next);
         setError(null);
         setRemoved((prev) => new Set([...prev].filter((id) => d.documents.some((x) => x.id === id))));
-        if (d.documents.some((x) => x.status === "indexing")) timer = setTimeout(run, POLL_MS);
+        if (d.documents.some((x) => x.status === "indexing" || removedRef.current.has(x.id))) timer = setTimeout(run, POLL_MS);
       } catch (e) {
         if (!alive) return;
         if (dataRef.current?.folder === folder) timer = setTimeout(run, POLL_MS);
@@ -145,6 +147,7 @@ export default function TaiLieu() {
     try {
       await deleteDocument(id);
       setRemoved((s) => new Set(s).add(id));
+      setReload((n) => n + 1);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setRemoved((s) => new Set(s).add(id));
       else {
@@ -189,6 +192,7 @@ export default function TaiLieu() {
       }
     }
     setUploading(false);
+    setFolderInput(null);
     setReload((n) => n + 1);
   }
 
@@ -259,6 +263,7 @@ export default function TaiLieu() {
                 className="input"
                 id="fd"
                 list="folders"
+                placeholder="Ví dụ: Nhân sự"
                 value={folderInput ?? folder}
                 aria-invalid={folderInvalid}
                 onChange={(e) => { setFolderInput(e.target.value); setFolderInvalid(false); }}
