@@ -1,10 +1,21 @@
 import os
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 
 from openai import OpenAI
 
-BASE_URLS = {"gemini": "https://generativelanguage.googleapis.com/v1beta/openai/"}
-ENV_VARS = {"gemini": ("GEMINI_API_KEY", "GEMINI_MODEL")}
+BASE_URLS = {
+    "claude": "https://api.anthropic.com/v1/",
+    "openai": None,
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+}
+ENV_VARS = {
+    "claude": ("ANTHROPIC_API_KEY", "CLAUDE_MODEL"),
+    "openai": ("OPENAI_API_KEY", "OPENAI_MODEL"),
+    "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL"),
+}
+# OpenAI reasoning models reject max_tokens and count hidden reasoning against the limit.
+LIMIT_PARAM = {"claude": "max_tokens", "openai": "max_completion_tokens", "gemini": "max_tokens"}
+MAX_OUTPUT = 4000
 NOT_FOUND = "Không tìm thấy trong tài liệu"
 SYSTEM = (
     "Chỉ trả lời dựa trên các nguồn đánh số [1]…[5] được cung cấp. "
@@ -12,6 +23,11 @@ SYSTEM = (
     f'Nếu nguồn không có thông tin, trả lời "{NOT_FOUND}". '
     "Trả lời bằng ngôn ngữ của câu hỏi. "
     "Viết văn bản thuần, không dùng markdown (không `**`, `#`, gạch đầu dòng, bảng); xuống dòng bằng dòng trống."
+)
+REWRITE_SYSTEM = (
+    "Bạn viết lại câu hỏi cuối của người dùng thành một câu hỏi đầy đủ ý, tự hiểu được mà không cần các lượt trước. "
+    "Chỉ trả về đúng một câu hỏi, cùng ngôn ngữ với câu hỏi cuối. "
+    "Không trả lời câu hỏi, không giải thích, không thêm dấu ngoặc kép."
 )
 
 
@@ -40,12 +56,47 @@ def build_messages(question: str, chunks: list[dict]) -> list[dict]:
     ]
 
 
+def _client(provider: str, env: Mapping[str, str], http_client=None) -> OpenAI:
+    key, _ = ENV_VARS[provider]
+    kwargs = {"base_url": BASE_URLS[provider]} if BASE_URLS[provider] else {}
+    return OpenAI(api_key=env[key], http_client=http_client, **kwargs)
+
+
+def stream_answer(question: str, chunks: list[dict], provider: str,
+                  env: Mapping[str, str], http_client=None) -> Iterator[str]:
+    stream = _client(provider, env, http_client).chat.completions.create(
+        model=env[ENV_VARS[provider][1]],
+        messages=build_messages(question, chunks),
+        stream=True,
+        **{LIMIT_PARAM[provider]: MAX_OUTPUT},
+    )
+    for chunk in stream:
+        # some providers end the stream with a chunk that has no choices (e.g. usage)
+        if chunk.choices and (text := chunk.choices[0].delta.content):
+            yield text
+
+
+def rewrite(question: str, turns: list[dict], provider: str,
+            env: Mapping[str, str], http_client=None) -> str:
+    history = "\n\n".join(f"Câu hỏi: {t['question']}\nTrả lời: {t['answer']}" for t in turns)
+    resp = _client(provider, env, http_client).chat.completions.create(
+        model=env[ENV_VARS[provider][1]],
+        messages=[
+            {"role": "system", "content": REWRITE_SYSTEM},
+            {"role": "user", "content": f"Các lượt trước:\n{history}\n\nCâu hỏi cuối: {question}"},
+        ],
+        **{LIMIT_PARAM[provider]: MAX_OUTPUT},
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
 def answer(question: str, chunks: list[dict], provider: str,
            env: Mapping[str, str] = os.environ, http_client=None) -> str:
-    key, model = ENV_VARS[provider]
-    client = OpenAI(api_key=env[key], base_url=BASE_URLS[provider], http_client=http_client)
-    resp = client.chat.completions.create(
-        model=env[model], messages=build_messages(question, chunks), max_tokens=1024
+    # ponytail: kept only until Task 3 switches app.py to stream_answer, then deleted
+    resp = _client(provider, env, http_client).chat.completions.create(
+        model=env[ENV_VARS[provider][1]],
+        messages=build_messages(question, chunks),
+        **{LIMIT_PARAM[provider]: MAX_OUTPUT},
     )
     content = resp.choices[0].message.content
     if not content:

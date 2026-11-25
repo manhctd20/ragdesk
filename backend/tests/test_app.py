@@ -224,12 +224,12 @@ def test_config_external_without_model(open_client, make_env):
     assert SECRET not in r.text
 
 
-def test_config_ignores_other_vendors(open_client, make_env):
+def test_config_lists_all_configured_vendors(open_client, make_env):
     env = make_env(ALLOW_EXTERNAL="true", ANTHROPIC_API_KEY="a-key", CLAUDE_MODEL="c",
                    OPENAI_API_KEY="o-key", OPENAI_MODEL="o")
     r = open_client(env).get("/api/config")
-    assert r.json()["providers"] == []
-    assert r.json()["allow_external"] is False
+    assert r.json()["providers"] == ["claude", "openai"]
+    assert r.json()["allow_external"] is True
 
 
 def test_config_default_max_upload(open_client, make_env):
@@ -502,8 +502,8 @@ def test_ask_no_documents_external(open_client, make_env):
     ({"ALLOW_EXTERNAL": "true", "GEMINI_API_KEY": SECRET}, None),
     ({"ALLOW_EXTERNAL": "true", "GEMINI_API_KEY": SECRET, "GEMINI_MODEL": " "}, None),
     (EXTERNAL, "foo"),
-    ({**EXTERNAL, "ANTHROPIC_API_KEY": "a", "CLAUDE_MODEL": "c"}, "claude"),
-    ({**EXTERNAL, "OPENAI_API_KEY": "o", "OPENAI_MODEL": "m"}, "openai"),
+    (EXTERNAL, "claude"),
+    (EXTERNAL, "openai"),
     (EXTERNAL, "<script>alert(1)</script>"),
 ])
 def test_ask_external_forbidden(open_client, make_env, tmp_path, extra, provider):
