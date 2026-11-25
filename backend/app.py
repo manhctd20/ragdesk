@@ -1,21 +1,23 @@
 import asyncio
 import hmac
+import json
 import logging
 import os
 import threading
 import unicodedata
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 import llm
 import store
+from ask import ask_events
 from search import Bm25Holder, Embedder, Index, search
 from worker import Worker
 
@@ -35,14 +37,30 @@ def clean_name(s: str) -> str:
     return s
 
 
+class HistoryTurn(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    mode: Literal["internal", "external"]
+    provider: str | None = None
+    answer: str | None = Field(None, max_length=8000)
+
+
 class AskBody(BaseModel):
     question: str = Field(min_length=1)
     mode: Literal["internal", "external"]
     provider: str | None = None
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=3)
 
 
-def create_app(env: Mapping[str, str] | None = None, *, embedder=None,
-               answer: Callable = llm.answer, frontend_dir: Path = DIST) -> FastAPI:
+def sse_stream(events: Iterator[tuple[str, dict]]) -> Iterator[str]:
+    try:
+        for name, data in events:
+            yield f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    finally:
+        events.close()  # client disconnect: propagate to the upstream LLM stream
+
+
+def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_answer=llm.stream_answer,
+               rewrite=llm.rewrite, frontend_dir: Path = DIST) -> FastAPI:
     env = os.environ if env is None else env
     password = env.get("ADMIN_PASSWORD") or ""
     max_mb = int(env.get("MAX_UPLOAD_MB") or 20)
@@ -129,25 +147,40 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None,
         app.state.worker.enqueue_delete(doc_id)
         return {"id": doc_id}
 
-    @app.post("/api/ask")
-    def ask(body: AskBody):
+    def start_ask(body: AskBody) -> tuple[str | None, Iterator[tuple[str, dict]]]:
+        # ask_events treats provider=None as internal, so internal requests never carry a provider
         provider = None
         if body.mode == "external":
             provider = body.provider or (configured[0] if configured else None)
             if not allow_external or provider not in configured:
                 raise HTTPException(403, "Chưa cho phép gửi ra ngoài")
         s = app.state
-        sources = search(body.question, s.embedder, s.index, s.bm25)
-        result = {"answer": None, "sources": sources, "llm_error": None, "message": None}
-        if not sources:
-            result["message"] = "Chưa có tài liệu nào"
-        elif provider:
-            try:
-                result["answer"] = answer(body.question, sources, provider, env)
-            except Exception as e:
-                logger.exception("LLM call failed")
-                result["llm_error"] = f"Không gọi được AI ngoài ({type(e).__name__})"
+        events = ask_events(
+            body.question, body.mode, provider, [t.model_dump() for t in body.history],
+            find=lambda query, highlight: search(query, s.embedder, s.index, s.bm25, highlight=highlight),
+            stream_answer=stream_answer, rewrite=rewrite, env=env,
+        )
+        return provider, events
+
+    @app.post("/api/ask")
+    def ask(body: AskBody):
+        provider, events = start_ask(body)
+        result = {"answer": None, "sources": [], "llm_error": None, "message": None, "query": None,
+                  "provider": provider}
+        parts = []
+        for name, data in events:
+            if name == "delta":
+                parts.append(data["text"])
+            elif name != "done":
+                result.update(data)
+        result["answer"] = "".join(parts) or None
         return result
+
+    @app.post("/api/ask/stream")
+    def ask_stream(body: AskBody):
+        _, events = start_ask(body)
+        return StreamingResponse(sse_stream(events), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.get("/{path:path}")
     def frontend(path: str):

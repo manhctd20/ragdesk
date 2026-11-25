@@ -5,7 +5,7 @@ import openai
 import pytest
 
 from llm import (
-    BASE_URLS, ENV_VARS, LIMIT_PARAM, MAX_OUTPUT, NOT_FOUND, SYSTEM, answer, build_messages, providers, rewrite,
+    BASE_URLS, ENV_VARS, LIMIT_PARAM, MAX_OUTPUT, NOT_FOUND, SYSTEM, build_messages, providers, rewrite,
     stream_answer,
 )
 
@@ -213,22 +213,6 @@ def test_rewrite_empty_returns_empty_string(content):
 
     turns = [{"question": "q", "answer": "a"}]
     assert rewrite("câu hỏi", turns, "gemini", ENV, http_client=client_with(handler)) == ""
-
-
-def test_answer_still_works_until_app_stops_using_it():
-    def handler(request):
-        return httpx2.Response(200, json=completion("Được 12 ngày [1]"))
-
-    assert answer(QUESTION, five_chunks(), "gemini", ENV, http_client=client_with(handler)) == "Được 12 ngày [1]"
-
-
-@pytest.mark.parametrize("content", ["", None])
-def test_answer_empty_content_raises(content):
-    def handler(request):
-        return httpx2.Response(200, json=completion(content))
-
-    with pytest.raises(ValueError):
-        answer(QUESTION, five_chunks(), "gemini", ENV, http_client=client_with(handler))
 
 
 def test_system_forbids_markdown():

@@ -1,4 +1,5 @@
 import logging
+from contextlib import closing
 from collections.abc import Callable, Iterator, Mapping
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,9 @@ def ask_events(
     yield "meta", {"sources": chunks, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào"}
     if chunks and provider is not None:
         try:
-            for text in stream_answer(question, chunks, provider, env):
-                yield "delta", {"text": text}
+            with closing(stream_answer(question, chunks, provider, env)) as stream:
+                for text in stream:
+                    yield "delta", {"text": text}
         except Exception as e:
             logger.exception("LLM call failed")
             yield "error", {"llm_error": f"Không gọi được AI ngoài ({type(e).__name__})"}

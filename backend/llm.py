@@ -1,4 +1,3 @@
-import os
 from collections.abc import Iterator, Mapping
 
 from openai import OpenAI
@@ -70,10 +69,11 @@ def stream_answer(question: str, chunks: list[dict], provider: str,
         stream=True,
         **{LIMIT_PARAM[provider]: MAX_OUTPUT},
     )
-    for chunk in stream:
-        # some providers end the stream with a chunk that has no choices (e.g. usage)
-        if chunk.choices and (text := chunk.choices[0].delta.content):
-            yield text
+    with stream:
+        for chunk in stream:
+            # some providers end the stream with a chunk that has no choices (e.g. usage)
+            if chunk.choices and (text := chunk.choices[0].delta.content):
+                yield text
 
 
 def rewrite(question: str, turns: list[dict], provider: str,
@@ -89,16 +89,3 @@ def rewrite(question: str, turns: list[dict], provider: str,
     )
     return (resp.choices[0].message.content or "").strip()
 
-
-def answer(question: str, chunks: list[dict], provider: str,
-           env: Mapping[str, str] = os.environ, http_client=None) -> str:
-    # ponytail: kept only until Task 3 switches app.py to stream_answer, then deleted
-    resp = _client(provider, env, http_client).chat.completions.create(
-        model=env[ENV_VARS[provider][1]],
-        messages=build_messages(question, chunks),
-        **{LIMIT_PARAM[provider]: MAX_OUTPUT},
-    )
-    content = resp.choices[0].message.content
-    if not content:
-        raise ValueError("empty LLM response")
-    return content

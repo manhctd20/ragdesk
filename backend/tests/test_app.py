@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -15,7 +16,8 @@ from fpdf import FPDF
 from openpyxl import Workbook
 
 import store
-from app import clean_name, create_app
+from app import clean_name, create_app, sse_stream
+from ask import ask_events
 from ingest import Chunk
 from search import Index
 
@@ -40,21 +42,27 @@ class FakeEmbedder:
         return [1.0] + [0.0] * (DIM - 1)
 
 
-class FakeAnswer:
-    def __init__(self, reply="Trả lời [1]", exc=None):
-        self.reply = reply
+class FakeLLM:
+    def __init__(self, deltas=("Trả lời [1]",), exc=None, rewritten="câu viết lại"):
+        self.deltas = list(deltas)
         self.exc = exc
+        self.rewritten = rewritten
         self.calls = []
+        self.rewrites = []
 
-    def __call__(self, *args, **kwargs):
-        self.calls.append((args, kwargs))
+    def stream_answer(self, question, chunks, provider, env):
+        self.calls.append((question, chunks, provider))
+        for d in self.deltas:
+            yield d
         if self.exc:
             raise self.exc
-        return self.reply
+
+    def rewrite(self, question, turns, provider, env):
+        self.rewrites.append((question, turns, provider))
+        return self.rewritten
 
     def provider(self, i=0):
-        args, kwargs = self.calls[i]
-        return kwargs["provider"] if "provider" in kwargs else args[2]
+        return self.calls[i][2]
 
 
 def xlsx_bytes(tmp_path, n_rows, prefix="Mục"):
@@ -107,11 +115,13 @@ def make_env(data):
 def open_client(tmp_path, make_env):
     stack = ExitStack()
 
-    def _open(env=None, answer=None, frontend_dir=None):
+    def _open(env=None, llm=None, frontend_dir=None):
+        llm = llm if llm is not None else FakeLLM()
         application = create_app(
             env if env is not None else make_env(),
             embedder=FakeEmbedder(),
-            answer=answer if answer is not None else FakeAnswer(),
+            stream_answer=llm.stream_answer,
+            rewrite=llm.rewrite,
             frontend_dir=frontend_dir if frontend_dir is not None else tmp_path / "dist",
         )
         client = stack.enter_context(TestClient(application))
@@ -143,11 +153,22 @@ def regular_files(root):
     return [p for p in root.rglob("*") if p.is_file()] if root.exists() else []
 
 
-def ask(c, question="nội dung", mode="internal", provider=None):
+def ask(c, question="nội dung", mode="internal", provider=None, history=None, path="/api/ask"):
     body = {"question": question, "mode": mode}
     if provider is not None:
         body["provider"] = provider
-    return c.post("/api/ask", json=body)
+    if history is not None:
+        body["history"] = history
+    return c.post(path, json=body)
+
+
+def parse_sse(text):
+    events = []
+    for block in text.strip().split("\n\n"):
+        name, data = block.split("\n", 1)
+        assert name.startswith("event: ") and data.startswith("data: ")
+        events.append((name[7:], json.loads(data[6:])))
+    return events
 
 
 def source_doc_ids(resp):
@@ -181,7 +202,9 @@ def test_lifespan_requires_admin_password(make_env, tmp_path, pw):
         del env["ADMIN_PASSWORD"]
     else:
         env["ADMIN_PASSWORD"] = pw
-    application = create_app(env, embedder=FakeEmbedder(), answer=FakeAnswer(), frontend_dir=tmp_path / "dist")
+    llm = FakeLLM()
+    application = create_app(env, embedder=FakeEmbedder(), stream_answer=llm.stream_answer,
+                             rewrite=llm.rewrite, frontend_dir=tmp_path / "dist")
 
     async def run():
         async with application.router.lifespan_context(application):
@@ -485,8 +508,8 @@ def test_ask_no_documents_internal(open_client):
 
 
 def test_ask_no_documents_external(open_client, make_env):
-    fake = FakeAnswer()
-    c = open_client(make_env(**EXTERNAL), answer=fake)
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL), llm=fake)
     r = ask(c, mode="external")
     assert r.status_code == 200
     assert r.json()["sources"] == []
@@ -507,8 +530,8 @@ def test_ask_no_documents_external(open_client, make_env):
     (EXTERNAL, "<script>alert(1)</script>"),
 ])
 def test_ask_external_forbidden(open_client, make_env, tmp_path, extra, provider):
-    fake = FakeAnswer()
-    c = open_client(make_env(**extra), answer=fake)
+    fake = FakeLLM()
+    c = open_client(make_env(**extra), llm=fake)
     upload_ready(c, tmp_path)
     r = ask(c, mode="external", provider=provider)
     assert r.status_code == 403
@@ -518,15 +541,15 @@ def test_ask_external_forbidden(open_client, make_env, tmp_path, extra, provider
 
 
 def test_ask_gate_checked_before_search(open_client, make_env):
-    fake = FakeAnswer()
-    c = open_client(make_env(ALLOW_EXTERNAL="false"), answer=fake)
+    fake = FakeLLM()
+    c = open_client(make_env(ALLOW_EXTERNAL="false"), llm=fake)
     assert ask(c, mode="external").status_code == 403
     assert fake.calls == []
 
 
 def test_ask_external_success(open_client, make_env, tmp_path):
-    fake = FakeAnswer("Trả lời [1]")
-    c = open_client(make_env(**EXTERNAL), answer=fake)
+    fake = FakeLLM(["Trả lời [1]"])
+    c = open_client(make_env(**EXTERNAL), llm=fake)
     doc_id = upload_ready(c, tmp_path)
     r = ask(c, "Mục nội dung", mode="external")
     assert r.status_code == 200
@@ -536,21 +559,20 @@ def test_ask_external_success(open_client, make_env, tmp_path):
     assert body["sources"] and doc_id in source_doc_ids(r)
     assert len(fake.calls) == 1
     assert fake.provider() == "gemini"
-    args, kwargs = fake.calls[0]
-    assert (kwargs.get("question") or args[0]) == "Mục nội dung"
+    assert fake.calls[0][0] == "Mục nội dung"
 
 
 def test_ask_external_explicit_provider(open_client, make_env, tmp_path):
-    fake = FakeAnswer()
-    c = open_client(make_env(**EXTERNAL), answer=fake)
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL), llm=fake)
     upload_ready(c, tmp_path)
     assert ask(c, mode="external", provider="gemini").status_code == 200
     assert fake.provider() == "gemini"
 
 
 def test_ask_internal_does_not_call_llm(open_client, make_env, tmp_path):
-    fake = FakeAnswer()
-    c = open_client(make_env(**EXTERNAL), answer=fake)
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL), llm=fake)
     doc_id = upload_ready(c, tmp_path)
     r = ask(c, "Mục nội dung")
     assert r.status_code == 200
@@ -566,8 +588,8 @@ def test_ask_internal_does_not_call_llm(open_client, make_env, tmp_path):
 
 
 def test_ask_llm_error_hides_details(open_client, make_env, tmp_path):
-    fake = FakeAnswer(exc=RuntimeError(SECRET))
-    c = open_client(make_env(**EXTERNAL), answer=fake)
+    fake = FakeLLM([], exc=RuntimeError(SECRET))
+    c = open_client(make_env(**EXTERNAL), llm=fake)
     upload_ready(c, tmp_path)
     r = ask(c, mode="external")
     assert r.status_code == 200
@@ -589,6 +611,124 @@ def test_ask_llm_error_hides_details(open_client, make_env, tmp_path):
 def test_ask_invalid_input(open_client, body):
     c = open_client()
     assert c.post("/api/ask", json=body).status_code == 422
+
+
+def test_ask_internal_ignores_provider_in_body(open_client, make_env, tmp_path):
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL), llm=fake)
+    upload_ready(c, tmp_path)
+    history = [{"question": "q", "mode": "external", "provider": "gemini", "answer": "a"}]
+    for path in ("/api/ask", "/api/ask/stream"):
+        assert ask(c, mode="internal", provider="gemini", history=history, path=path).status_code == 200
+    assert fake.calls == []
+    assert fake.rewrites == []
+
+
+def test_ask_with_history_rewrites_for_external(open_client, make_env, tmp_path):
+    fake = FakeLLM(rewritten="Nghỉ ốm bao nhiêu ngày?")
+    c = open_client(make_env(**EXTERNAL), llm=fake)
+    upload_ready(c, tmp_path)
+    history = [
+        {"question": "Nghỉ phép?", "mode": "external", "provider": "gemini", "answer": "12 ngày [1]"},
+        {"question": "Nội bộ", "mode": "internal"},
+    ]
+    r = ask(c, "Còn nghỉ ốm?", mode="external", history=history)
+    assert r.status_code == 200
+    assert r.json()["query"] == "Nghỉ ốm bao nhiêu ngày?"
+    assert fake.rewrites[0][1] == [{"question": "Nghỉ phép?", "answer": "12 ngày [1]"}]
+    assert fake.calls[0][0] == "Nghỉ ốm bao nhiêu ngày?"
+
+
+@pytest.mark.parametrize("patch", [
+    {"history": [{"question": "q", "mode": "internal"}] * 4},
+    {"history": [{"question": "q" * 2001, "mode": "internal"}]},
+    {"history": [{"question": "q", "mode": "external", "answer": "a" * 8001}]},
+    {"history": [{"question": "q", "mode": "khac"}]},
+])
+def test_history_validation_422(open_client, patch):
+    c = open_client()
+    for path in ("/api/ask", "/api/ask/stream"):
+        assert c.post(path, json={"question": "q", "mode": "internal", **patch}).status_code == 422
+
+
+def test_ask_json_collects_stream(open_client, make_env, tmp_path):
+    c = open_client(make_env(**EXTERNAL), llm=FakeLLM(["Trả ", "lời [1]"]))
+    upload_ready(c, tmp_path)
+    body = ask(c, "Mục nội dung", mode="external").json()
+    assert body["answer"] == "Trả lời [1]"
+    assert body["provider"] == "gemini"
+    assert "query" in body and body["query"] is None
+    assert body["llm_error"] is None
+
+
+def test_ask_json_partial_answer_with_error(open_client, make_env, tmp_path):
+    c = open_client(make_env(**EXTERNAL), llm=FakeLLM(["Trả "], exc=RuntimeError(SECRET)))
+    upload_ready(c, tmp_path)
+    r = ask(c, mode="external")
+    assert r.json()["answer"] == "Trả "
+    assert r.json()["llm_error"]
+    assert SECRET not in r.text
+
+
+def test_ask_stream_sse(open_client, make_env, tmp_path):
+    c = open_client(make_env(**EXTERNAL), llm=FakeLLM(["Trả ", "lời [1]"]))
+    doc_id = upload_ready(c, tmp_path)
+    r = ask(c, "Mục nội dung", mode="external", path="/api/ask/stream")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(r.text)
+    assert [n for n, _ in events] == ["meta", "delta", "delta", "done"]
+    assert doc_id in {s["meta"]["doc_id"] for s in events[0][1]["sources"]}
+    assert [d["text"] for n, d in events if n == "delta"] == ["Trả ", "lời [1]"]
+    assert "Trả " in r.text  # ensure_ascii=False
+
+
+def test_ask_stream_error_event_then_done(open_client, make_env, tmp_path):
+    c = open_client(make_env(**EXTERNAL), llm=FakeLLM([], exc=RuntimeError(SECRET)))
+    upload_ready(c, tmp_path)
+    r = ask(c, mode="external", path="/api/ask/stream")
+    assert [n for n, _ in parse_sse(r.text)] == ["meta", "error", "done"]
+    assert SECRET not in r.text
+
+
+def test_ask_stream_403_before_stream(open_client, make_env):
+    c = open_client(make_env(ALLOW_EXTERNAL="false"))
+    r = ask(c, mode="external", path="/api/ask/stream")
+    assert r.status_code == 403
+    assert r.json() == {"detail": "Chưa cho phép gửi ra ngoài"}
+
+
+def test_config_providers_order(open_client, make_env):
+    env = make_env(ALLOW_EXTERNAL="true", GEMINI_API_KEY="g", GEMINI_MODEL="g", OPENAI_API_KEY="o",
+                   OPENAI_MODEL="o", ANTHROPIC_API_KEY="a", CLAUDE_MODEL="c")
+    assert open_client(env).get("/api/config").json()["providers"] == ["claude", "openai", "gemini"]
+
+
+def test_unknown_or_unconfigured_provider_403(open_client, make_env):
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL), llm=fake)
+    for path in ("/api/ask", "/api/ask/stream"):
+        assert ask(c, mode="external", provider="openai", path=path).status_code == 403
+    assert fake.calls == []
+
+
+def test_sse_stream_closes_upstream_on_early_close():
+    closed = []
+
+    def stream_answer(question, chunks, provider, env):
+        try:
+            yield "a"
+            yield "b"
+        finally:
+            closed.append(True)
+
+    events = ask_events("q", "external", "gemini", [], find=lambda q, h: [{"id": "1"}],
+                        stream_answer=stream_answer, rewrite=None, env={})
+    gen = sse_stream(events)
+    assert next(gen).startswith("event: meta")
+    assert next(gen).startswith("event: delta")
+    gen.close()
+    assert closed == [True]
 
 
 def test_ask_injection_question_is_plain_text(open_client, tmp_path):
