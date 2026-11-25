@@ -327,11 +327,11 @@ def test_worker_thread_survives_failed_jobs(env, tmp_path, monkeypatch, caplog):
     real_rebuild = env.worker.rebuild_bm25
     raised = []
 
-    def rebuild_once_broken():
+    def rebuild_once_broken(**kw):
         if not raised:
             raised.append(True)
             raise RuntimeError("bm25 boom")
-        real_rebuild()
+        real_rebuild(**kw)
 
     monkeypatch.setattr(env.worker, "rebuild_bm25", rebuild_once_broken)
     env.worker.start()
@@ -447,3 +447,17 @@ def test_failed_cleanup_marks_error_and_hides_orphan_chunks(env, tmp_path, monke
     assert good in env.bm25_docs()
     assert bad not in env.bm25_docs()
     assert not env.chunk_ids(bad) & env.bm25_ids()
+
+
+def test_doc_is_searchable_before_it_is_marked_ready(env, tmp_path, monkeypatch):
+    seen = []
+    real_update = store.update
+
+    def spy_update(doc_id, **fields):
+        if fields.get("status") == "ready":
+            seen.append(doc_id in env.bm25_docs())
+        real_update(doc_id, **fields)
+
+    monkeypatch.setattr(store, "update", spy_update)
+    env.index_now(xlsx_bytes(tmp_path, 2))
+    assert seen == [True]

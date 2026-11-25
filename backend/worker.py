@@ -43,9 +43,9 @@ class Worker:
     def run_job(self, kind: str, doc_id: str) -> None:
         (self._index if kind == "index" else self._delete)(doc_id)
 
-    def rebuild_bm25(self) -> None:
-        # Only ready docs are searchable, so orphan chunks left by a failed cleanup stay hidden.
-        ready = {r["id"] for r in store.list() if r["status"] == "ready"}
+    def rebuild_bm25(self, also: str | None = None) -> None:
+        # Only ready docs (plus `also`) are searchable, so orphan chunks stay hidden.
+        ready = {r["id"] for r in store.list() if r["status"] == "ready"} | ({also} if also else set())
         pairs = [(i, t) for i, t in zip(*self.index.all_texts()) if i.rsplit(":", 1)[0] in ready]
         self.bm25.rebuild([i for i, _ in pairs], [t for _, t in pairs])
 
@@ -75,6 +75,7 @@ class Worker:
                 store.update(doc_id, progress_done=i + len(batch))
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(tmp, dest)
+            self.rebuild_bm25(also=doc_id)  # searchable before clients see "ready"
             store.update(doc_id, status="ready", chunk_count=len(chunks))
             self._drop_replaced(row["replaces_id"])
         except Exception as e:

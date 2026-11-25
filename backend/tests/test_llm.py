@@ -4,7 +4,7 @@ import httpx2
 import openai
 import pytest
 
-from llm import BASE_URLS, ENV_VARS, NOT_FOUND, answer, build_messages, providers
+from llm import BASE_URLS, ENV_VARS, NOT_FOUND, SYSTEM, answer, build_messages, providers
 
 FOLDER = "Phòng Bí Mật"
 QUESTION = "Nghỉ phép năm được bao nhiêu ngày?"
@@ -134,3 +134,10 @@ def test_answer_empty_content_raises(content):
 
     with pytest.raises(ValueError):
         answer(QUESTION, five_chunks(), "gemini", ENV, http_client=client_with(handler))
+
+
+def test_system_forbids_markdown():
+    assert "markdown" in SYSTEM.lower()
+    assert NOT_FOUND in SYSTEM
+    assert "[1]" in SYSTEM
+    assert build_messages(QUESTION, five_chunks())[0]["content"] == SYSTEM

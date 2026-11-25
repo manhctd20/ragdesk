@@ -10,7 +10,8 @@ SYSTEM = (
     "Chỉ trả lời dựa trên các nguồn đánh số [1]…[5] được cung cấp. "
     "Trích số nguồn trong ngoặc vuông sau mỗi ý. "
     f'Nếu nguồn không có thông tin, trả lời "{NOT_FOUND}". '
-    "Trả lời bằng ngôn ngữ của câu hỏi."
+    "Trả lời bằng ngôn ngữ của câu hỏi. "
+    "Viết văn bản thuần, không dùng markdown (không `**`, `#`, gạch đầu dòng, bảng); xuống dòng bằng dòng trống."
 )
 
 
