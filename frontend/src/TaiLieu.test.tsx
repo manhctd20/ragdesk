@@ -564,7 +564,7 @@ describe("TaiLieu: upload", () => {
     await user.clear(folder);
     await user.upload(input, pdf("QuyDinh.pdf"));
     await waitFor(() => expect(api.uploads()).toHaveLength(1));
-    expect((api.uploads()[0].init?.body as FormData).get("folder")).toBe("Chung");
+    expect((api.uploads()[0].init!.body as FormData).get("folder")).toBe("Chung");
   });
 
   it("posts FormData with file and folder and the admin header, then reloads the list", async () => {

@@ -3,7 +3,7 @@
 html,body{overflow-x:clip}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.55}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-button,input,textarea{font:inherit}
+button,input,select,textarea{font:inherit}
 
 .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .app{height:100dvh;display:grid;grid-template-columns:232px minmax(0,1fr);overflow:hidden}

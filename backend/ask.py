@@ -46,9 +46,13 @@ def ask_events(
     yield "meta", {"sources": chunks, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào"}
     if chunks and provider is not None:
         try:
+            got_text = False
             with closing(stream_answer(question, chunks, provider, env)) as stream:
                 for text in stream:
+                    got_text = got_text or bool(text)
                     yield "delta", {"text": text}
+            if not got_text:
+                raise ValueError("empty LLM response")
         except Exception as e:
             logger.exception("LLM call failed")
             yield "error", {"llm_error": f"Không gọi được AI ngoài ({type(e).__name__})"}

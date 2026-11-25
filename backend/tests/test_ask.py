@@ -130,6 +130,12 @@ def test_external_error_midstream():
     assert events[2][1]["llm_error"] == "Không gọi được AI ngoài (RuntimeError)"
 
 
+def test_external_empty_stream_is_an_error():
+    events = run(Fakes(deltas=()))
+    assert names(events) == ["meta", "error", "done"]
+    assert events[1][1]["llm_error"] == "Không gọi được AI ngoài (ValueError)"
+
+
 def test_no_documents_message():
     f = Fakes(chunks=[])
     events = run(f)

@@ -458,6 +458,16 @@ describe("Chat", () => {
     expect(JSON.parse(String(askCalls(fetchMock)[0][1]?.body))).toMatchObject({ mode: "external", provider: "openai" });
   });
 
+  it("no provider list when external AI is not allowed, even with 3 providers", async () => {
+    const fetchMock = stubFetch({ allow_external: false, providers: ["claude", "openai", "gemini"] }, () => internalSse());
+    show("/");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
   it("remembered provider that is no longer configured falls back to the first", async () => {
     const user = userEvent.setup();
     localStorage.setItem("tcnb:provider", "openai");

@@ -54,7 +54,9 @@ export default function TaiLieu() {
   const [reload, setReload] = useState(0);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const removedRef = useRef(removed);
-  removedRef.current = removed;
+  useEffect(() => {
+    removedRef.current = removed;
+  }, [removed]);
   const dataRef = useRef<Listing | null>(null);
   const mounted = useRef(true);
 

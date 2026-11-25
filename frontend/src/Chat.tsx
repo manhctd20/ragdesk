@@ -179,7 +179,7 @@ export default function Chat({ conversations, onSave }: Props) {
             <ToggleIcon className="ic" aria-hidden="true" />
             {external ? "AI ngoài" : "Chỉ nội bộ"}
           </button>
-          {providers.length >= 2 && (
+          {allow && providers.length >= 2 && (
             <select
               className="provider"
               aria-label="Nhà cung cấp AI"
