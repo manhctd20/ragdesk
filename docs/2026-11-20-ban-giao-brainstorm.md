@@ -1,6 +1,6 @@
 # Bàn giao: hệ thống hỏi–đáp tài liệu nội bộ (RAG), giai đoạn brainstorm
 
-> **Trạng thái (20/11/2026):** đang brainstorm theo skill `superpowers:brainstorming`. **Chưa có design doc được duyệt, chưa được viết code.** Tài liệu này ghi lại mọi thứ đã bàn để một session mới làm tiếp mà không phải hỏi lại.
+> **Trạng thái (25/11/2026):** brainstorm **đã xong**. Thiết kế (`docs/2026-11-20-thiet-ke.md`) và kế hoạch (`docs/2026-11-20-ke-hoach.md`) đã được người dùng duyệt; backend đợt 1 đã code xong. Tài liệu này giữ lại làm bối cảnh: lý do của từng quyết định.
 >
 > Quy ước trong tài liệu:
 > - **[Người dùng chốt]**: người dùng đã nói rõ.
@@ -90,7 +90,7 @@ Token màu dùng trong bản phác `theme-v2.html` (nguồn: `~/.claude/skills/h
    - Phát hiện khi soát: FastEmbed không có sẵn `multilingual-e5-small`, sẽ nạp bằng `add_custom_model` (xem design doc mục 3).
    - Skill `superpowers` chưa được cài trên máy này.
 
-## 6. Đề xuất kỹ thuật (toàn bộ là [Claude đề xuất], chưa duyệt)
+## 6. Đề xuất kỹ thuật (ban đầu là [Claude đề xuất]; người dùng đã duyệt hết ngày 20/11/2026)
 
 | Phần | Đề xuất | Lý do |
 |---|---|---|
@@ -112,8 +112,4 @@ Token màu dùng trong bản phác `theme-v2.html` (nguồn: `~/.claude/skills/h
 
 ## 8. Cách tiếp tục trong session mới
 
-Mở terminal tại `~/workspace/tra-cuu-noi-bo`, chạy `claude`, rồi gõ:
-
-```text
-Đọc docs/2026-11-20-ban-giao-brainstorm.md. Tiếp tục brainstorm bằng skill superpowers:brainstorming từ mục 5 "Câu hỏi đang mở", bắt đầu bằng câu hỏi về đăng nhập / mật khẩu quản trị. Các mục [Claude đề xuất] chưa được duyệt, hãy nêu lại để tôi xác nhận trước khi viết design doc. Giao diện làm theo skill /hallmark, xem docs/mockups/theme-v2.html.
-```
+Brainstorm đã xong, không cần tiếp tục ở đây. Làm tiếp theo `docs/2026-11-20-ke-hoach.md` (đợt 1 còn Task 9–14: frontend và README).
