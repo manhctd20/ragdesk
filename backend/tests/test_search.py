@@ -223,3 +223,12 @@ def test_real_embedder_ranks_leave_chunk_first(index):
     index.delete_doc("leave")
     assert index.collection.get(where={"doc_id": "leave"})["ids"] == []
     assert index.count() == 2
+
+
+def test_highlight_limits_matched(index):
+    holder = Bm25Holder()
+    add_doc(index, "A", ["Nghỉ phép năm 12 ngày", "Kết nối VPN công ty"])
+    rebuild(holder, index)
+    res = search("nghỉ phép năm ai duyệt", FixedEmbedder(), index, holder, highlight="ngày")
+    assert res[0]["id"] == "A:0"
+    assert res[0]["matched"] == ["ngày"]

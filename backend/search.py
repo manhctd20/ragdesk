@@ -101,16 +101,17 @@ def rrf(*rankings: list[str], k: int = 60) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda x: -x[1])
 
 
-def search(question: str, embedder, index: Index, bm25: Bm25Holder, top: int = 5) -> list[dict]:
+def search(question: str, embedder, index: Index, bm25: Bm25Holder, top: int = 5, highlight: str | None = None) -> list[dict]:
     bm, ids, doc_ids = bm25.current
     if not doc_ids or index.count() == 0:
         return []
     tokens = tokenize(question)
     ranked = rrf(index.dense(embedder.embed_query(question), doc_ids, 20), bm25_rank(bm, ids, tokens, 20))[:top]
     scores = dict(ranked)
+    shown = tokenize(highlight or question)
     results = []
     for hit in index.get([cid for cid, _ in ranked]):
         present = set(tokenize(hit["text"]))
-        matched = list(dict.fromkeys(t for t in tokens if t in present))
+        matched = list(dict.fromkeys(t for t in shown if t in present))
         results.append({**hit, "score": scores[hit["id"]], "matched": matched})
     return results
