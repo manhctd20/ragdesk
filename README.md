@@ -125,7 +125,7 @@ ALLOW_EXTERNAL=true GEMINI_API_KEY=<key> GEMINI_MODEL=<tên model>
 
 **Quản trị**
 1. Vào **Tài liệu**, bấm "Mở khoá quản trị", nhập `ADMIN_PASSWORD`. Trạng thái mở khoá giữ đến khi đóng tab hoặc bấm "Khoá lại".
-2. Nhập tên thư mục (gợi ý từ các thư mục đã có), rồi chọn hoặc kéo thả file.
+2. Nhập tên thư mục (gợi ý từ các thư mục đã có), rồi chọn hoặc kéo thả file. Để trống thì file vào thư mục **Chung**.
 3. Chờ cột trạng thái chuyển từ "Đang index" sang "Sẵn sàng". Trang tự cập nhật mỗi 2 giây khi còn file đang index.
 4. Muốn cập nhật một file thì tải lên bản mới **cùng tên, cùng thư mục**.
 5. Xoá: bấm thùng rác ở dòng đó, rồi "Xoá file".

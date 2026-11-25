@@ -558,15 +558,13 @@ describe("TaiLieu: upload", () => {
     expect(api.uploads()).toHaveLength(0);
   });
 
-  it("rejects an empty folder without POST", async () => {
+  it("uploads into 'Chung' when the folder field is left empty", async () => {
     const { api, input, user } = await ready("/tai-lieu");
     const folder = screen.getByLabelText("Thư mục");
     await user.clear(folder);
     await user.upload(input, pdf("QuyDinh.pdf"));
-    await waitFor(() =>
-      expect(screen.queryByText(/QuyDinh\.pdf/) !== null || folder.getAttribute("aria-invalid") === "true").toBe(true),
-    );
-    expect(api.uploads()).toHaveLength(0);
+    await waitFor(() => expect(api.uploads()).toHaveLength(1));
+    expect((api.uploads()[0].init?.body as FormData).get("folder")).toBe("Chung");
   });
 
   it("posts FormData with file and folder and the admin header, then reloads the list", async () => {

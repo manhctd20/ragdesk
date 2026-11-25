@@ -9,6 +9,7 @@ import { formatWhen } from "./format";
 
 const POLL_MS = 2000;
 const EXT = /\.(pdf|docx|xlsx)$/i;
+const DEFAULT_FOLDER = "Chung";
 
 interface Listing { folder: string; documents: Doc[]; folders: Folder[] }
 
@@ -67,7 +68,6 @@ export default function TaiLieu() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [folderInput, setFolderInput] = useState<string | null>(null);
-  const [folderInvalid, setFolderInvalid] = useState(false);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -159,12 +159,8 @@ export default function TaiLieu() {
 
   async function upload(files: File[]) {
     if (files.length === 0 || uploading) return;
-    const dest = (folderInput ?? folder).trim();
+    const dest = (folderInput ?? folder).trim() || DEFAULT_FOLDER;
     setUploadErrors([]);
-    if (!dest) {
-      setFolderInvalid(true);
-      return;
-    }
     setUploading(true);
     const errors: string[] = [];
     for (const f of files) {
@@ -263,10 +259,9 @@ export default function TaiLieu() {
                 className="input"
                 id="fd"
                 list="folders"
-                placeholder="Ví dụ: Nhân sự"
+                placeholder={`Để trống: ${DEFAULT_FOLDER}`}
                 value={folderInput ?? folder}
-                aria-invalid={folderInvalid}
-                onChange={(e) => { setFolderInput(e.target.value); setFolderInvalid(false); }}
+                onChange={(e) => setFolderInput(e.target.value)}
               />
               <datalist id="folders">
                 {folders.map((f) => <option key={f.name} value={f.name} />)}
@@ -291,7 +286,6 @@ export default function TaiLieu() {
               }}
             />
           </div>
-          {folderInvalid && <span className="help err">Chưa nhập thư mục</span>}
         </div>
       )}
 
