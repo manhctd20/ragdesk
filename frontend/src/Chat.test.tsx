@@ -113,6 +113,8 @@ function show(path: string, conversations: Conversation[] = [], onSave = vi.fn()
 }
 
 const box = () => screen.getByRole("textbox");
+// A new conversation remounts Chat under /c/<id> after saving; wait for that before asserting on the answer.
+const movedToSaved = () => waitFor(() => expect(screen.getByTestId("path")).toHaveTextContent(/^\/c\//));
 const toggle = () => {
   const t = screen.getAllByRole("button").find((b) => b.hasAttribute("aria-pressed"));
   if (!t) throw new Error("no toggle button with aria-pressed");
@@ -260,7 +262,8 @@ describe("Chat", () => {
     expect(localStorage.getItem(HISTORY_KEY) ?? "").not.toContain(QUESTION);
 
     await user.click(retry);
-    expect(await screen.findByText(/NoiQuy_2026\.docx/, {}, { timeout: 3000 })).toBeInTheDocument();
+    await movedToSaved();
+    expect(screen.getByText(/NoiQuy_2026\.docx/)).toBeInTheDocument();
     expect(askCalls(fetchMock)).toHaveLength(2);
     expect(JSON.parse(String(askCalls(fetchMock)[1][1]?.body))).toStrictEqual({ question: QUESTION, mode: "internal", history: [] });
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -378,8 +381,9 @@ describe("Chat", () => {
       live.send({ type: "delta", text: "trưởng phòng duyệt [1]." }, DONE);
       live.close();
     });
-    expect(await screen.findByText(/Cần trưởng phòng duyệt/)).toBeInTheDocument();
-    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    await movedToSaved();
+    expect(screen.getByText(/Cần trưởng phòng duyệt/)).toBeInTheDocument();
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it("shows sources as soon as meta arrives", async () => {
@@ -409,9 +413,10 @@ describe("Chat", () => {
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
     await user.click(toggle());
     await user.type(box(), `${QUESTION}{Enter}`);
-    expect(await screen.findByText(/Không gọi được AI ngoài \(RateLimitError\)/)).toBeInTheDocument();
+    await movedToSaved();
+    expect(screen.getByText(/Không gọi được AI ngoài \(RateLimitError\)/)).toBeInTheDocument();
     expect(screen.getByText("Cần trưởng")).toBeInTheDocument();
-    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(1);
     expect((onSave.mock.calls[0][0] as Conversation).turns[0].result).toMatchObject({
       answer: "Cần trưởng ",
       llm_error: "Không gọi được AI ngoài (RateLimitError)",
