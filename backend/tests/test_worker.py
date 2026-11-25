@@ -426,3 +426,24 @@ def test_delete_ready_row_with_traversal_path_keeps_outside_file(env, tmp_path):
 
     assert store.get(doc_id) is None
     assert outside.read_bytes() == b"keep"
+
+
+def test_failed_cleanup_marks_error_and_hides_orphan_chunks(env, tmp_path, monkeypatch):
+    def broken_delete(doc_id):
+        raise RuntimeError("chroma down")
+
+    monkeypatch.setattr(env.index, "delete_doc", broken_delete)
+    env.embedder.fail_on = 2
+    env.embedder.exc = RuntimeError("chroma down")
+    bad = env.index_now(xlsx_bytes(tmp_path, 40))
+
+    row = store.get(bad)
+    assert row["status"] == "error"
+    assert row["error"] == "Lỗi khi index: RuntimeError"
+    assert not env.tmp_file(bad).exists()
+    assert len(env.chunk_ids(bad)) == BATCH
+
+    good = env.index_now(xlsx_bytes(tmp_path, 2), filename="Khác.xlsx")
+    assert good in env.bm25_docs()
+    assert bad not in env.bm25_docs()
+    assert not env.chunk_ids(bad) & env.bm25_ids()

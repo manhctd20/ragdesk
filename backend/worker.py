@@ -44,7 +44,10 @@ class Worker:
         (self._index if kind == "index" else self._delete)(doc_id)
 
     def rebuild_bm25(self) -> None:
-        self.bm25.rebuild(*self.index.all_texts())
+        # Only ready docs are searchable, so orphan chunks left by a failed cleanup stay hidden.
+        ready = {r["id"] for r in store.list() if r["status"] == "ready"}
+        pairs = [(i, t) for i, t in zip(*self.index.all_texts()) if i.rsplit(":", 1)[0] in ready]
+        self.bm25.rebuild([i for i, _ in pairs], [t for _, t in pairs])
 
     def _tmp(self, doc_id: str) -> Path:
         return self.files_root / ".tmp" / doc_id
@@ -80,9 +83,12 @@ class Worker:
             else:
                 message = "Lỗi khi index: " + type(e).__name__
                 logger.exception("index failed for doc %s", doc_id)
-            self.index.delete_doc(doc_id)
-            tmp.unlink(missing_ok=True)
             store.update(doc_id, status="error", error=message)
+            tmp.unlink(missing_ok=True)
+            try:
+                self.index.delete_doc(doc_id)
+            except Exception:
+                logger.exception("cleanup of failed doc %s failed", doc_id)
         self.rebuild_bm25()
 
     def _drop_replaced(self, old: str | None) -> None:
