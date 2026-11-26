@@ -1,4 +1,5 @@
 import { FileSpreadsheet, FileText, Lock, LockOpen, CircleAlert } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 import type { Mode, AskResult, Source } from "./api";
 import { PROVIDER_LABEL, highlight, splitCitations, whereLabel } from "./format";
@@ -29,7 +30,8 @@ function Card({ s }: { s: Source }) {
 interface Props { mode: Mode; result: AskResult; question?: string; provider?: string | null }
 
 export default function Answer({ mode, result, question, provider }: Props) {
-  const { answer, sources, llm_error, message, query } = result;
+  const { answer, sources, llm_error, message, query, low_relevance } = result;
+  const [open, setOpen] = useState(false);
   const external = mode === "external";
   const ModeIcon = external ? LockOpen : Lock;
   const who = provider ? ` (${PROVIDER_LABEL[provider] ?? provider})` : "";
@@ -48,6 +50,16 @@ export default function Answer({ mode, result, question, provider }: Props) {
           <Link to="/tai-lieu">Mở trang Tài liệu</Link>
         </div>
       )}
+      {low_relevance && (
+        <div className="notice">
+          <p>Không tìm thấy đoạn nào đủ liên quan</p>
+          {sources.length > 0 && (
+            <button type="button" className="btn ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
+              Xem các đoạn gần nhất
+            </button>
+          )}
+        </div>
+      )}
       {answer && (
         <p className="text">
           {splitCitations(answer, sources.length).map((p, i) =>
@@ -61,7 +73,9 @@ export default function Answer({ mode, result, question, provider }: Props) {
           {llm_error}
         </p>
       )}
-      {chips ? (
+      {low_relevance ? (
+        open && sources.map((s) => <Card key={s.id} s={s} />)
+      ) : chips ? (
         sources.length > 0 && (
           <div className="chips">
             {sources.map((s, i) => (

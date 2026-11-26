@@ -404,6 +404,26 @@ describe("Chat", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   });
 
+  it("low relevance in external mode shows no answer and no \"Đang viết câu trả lời…\" after meta", async () => {
+    const user = userEvent.setup();
+    const live = liveSse();
+    stubFetch({ allow_external: true, providers: ["gemini"] }, () => live.response);
+    const { onSave } = show("/");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-disabled", "false"));
+    await user.click(toggle());
+    await user.type(box(), `${QUESTION}{Enter}`);
+    expect(await screen.findByText(/Đang viết câu trả lời…/)).toBeInTheDocument();
+    await act(async () => live.send({ ...META, low_relevance: true } as AskEvent));
+    expect(await screen.findByText("Không tìm thấy đoạn nào đủ liên quan")).toBeInTheDocument();
+    expect(screen.queryByText(/Đang viết câu trả lời…/)).toBeNull();
+    await act(async () => {
+      live.send(DONE);
+      live.close();
+    });
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].turns[0].result.low_relevance).toBe(true);
+  });
+
   it("error mid-stream keeps text and shows the error, then saves", async () => {
     const user = userEvent.setup();
     stubFetch({ allow_external: true, providers: ["gemini"] }, () =>

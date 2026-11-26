@@ -2,11 +2,11 @@ export type Mode = "internal" | "external";
 export interface Config { allow_external: boolean; providers: string[]; max_upload_mb: number }
 export interface SourceMeta { doc_id: string; filename: string; folder: string; file_type: "pdf" | "docx" | "xlsx"; page?: number; section?: string; sheet?: string; row?: number }
 export interface Source { id: string; text: string; meta: SourceMeta; score: number; matched: string[] }
-export interface AskResult { answer: string | null; sources: Source[]; llm_error: string | null; message: string | null; query?: string | null; provider?: string | null }
+export interface AskResult { answer: string | null; sources: Source[]; llm_error: string | null; message: string | null; query?: string | null; provider?: string | null; low_relevance?: boolean }
 export interface HistoryTurn { question: string; mode: Mode; provider: string | null; answer: string | null }
 export interface AskRequest { question: string; mode: Mode; provider?: string; history: HistoryTurn[] }
 export type AskEvent =
-  | { type: "meta"; sources: Source[]; query: string | null; message: string | null }
+  | { type: "meta"; sources: Source[]; query: string | null; message: string | null; low_relevance?: boolean }
   | { type: "delta"; text: string }
   | { type: "error"; llm_error: string }
   | { type: "done" };

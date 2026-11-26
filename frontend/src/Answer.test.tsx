@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import Answer from "./Answer";
@@ -102,6 +103,42 @@ describe("Answer", () => {
 
     show("external", r, { provider: "openai" });
     expect(screen.getByText("AI ngoài (OpenAI): câu trả lời tổng hợp từ các đoạn")).toBeInTheDocument();
+  });
+
+  describe("low relevance", () => {
+    const NOTICE = "Không tìm thấy đoạn nào đủ liên quan";
+
+    it("low relevance shows the notice and hides cards until expanded", async () => {
+      const user = userEvent.setup();
+      show("internal", result({ low_relevance: true, sources: [src(1, {}, { filename: "Gan1.pdf" })] }));
+      expect(screen.getByText(NOTICE)).toBeInTheDocument();
+      const btn = screen.getByRole("button", { name: "Xem các đoạn gần nhất" });
+      expect(btn).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText(/Gan1\.pdf/)).toBeNull();
+      await user.click(btn);
+      expect(btn).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText(/Gan1\.pdf/)).toBeInTheDocument();
+      await user.click(btn);
+      expect(screen.queryByText(/Gan1\.pdf/)).toBeNull();
+    });
+
+    it("external: no answer text and no chips, cards only after expanding", async () => {
+      const user = userEvent.setup();
+      const { container } = show("external", result({ low_relevance: true, sources: [src(1, {}, { filename: "Gan1.pdf" })] }));
+      expect(screen.getByText(NOTICE)).toBeInTheDocument();
+      expect(container.querySelector(".chip, .text")).toBeNull();
+      expect(screen.queryByText(/Gan1\.pdf/)).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Xem các đoạn gần nhất" }));
+      expect(screen.getByText(/Gan1\.pdf/)).toBeInTheDocument();
+      expect(container.querySelector(".chip")).toBeNull();
+    });
+
+    it("old turns without low_relevance render as before", () => {
+      show("internal", result({ sources: [src(1, {}, { filename: "Gan1.pdf" })] }));
+      expect(screen.queryByText(NOTICE)).toBeNull();
+      expect(screen.queryByRole("button", { name: "Xem các đoạn gần nhất" })).toBeNull();
+      expect(screen.getByText(/Gan1\.pdf/)).toBeInTheDocument();
+    });
   });
 
   describe("untrusted text is never rendered as HTML", () => {

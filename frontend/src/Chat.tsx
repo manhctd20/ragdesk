@@ -71,7 +71,7 @@ export default function Chat({ conversations, onSave }: Props) {
     show();
     try {
       await askStream({ question, mode, provider: used ?? undefined, history: toHistory(turns) }, (e) => {
-        if (e.type === "meta") result = { ...result, sources: e.sources, query: e.query, message: e.message };
+        if (e.type === "meta") result = { ...result, sources: e.sources, query: e.query, message: e.message, low_relevance: e.low_relevance };
         else if (e.type === "delta") result = { ...result, answer: (result.answer ?? "") + e.text };
         else if (e.type === "error") result = { ...result, llm_error: e.llm_error };
         else return;
@@ -213,6 +213,6 @@ export default function Chat({ conversations, onSave }: Props) {
 }
 
 function waiting({ mode, result }: { mode: Mode; result: AskResult }): boolean {
-  if (result.message) return false;
+  if (result.message || result.low_relevance) return false;
   return mode === "external" ? !result.answer && !result.llm_error : result.sources.length === 0;
 }
