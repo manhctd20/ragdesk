@@ -1,0 +1,399 @@
+[
+ {
+  "question": "Giờ làm việc của công ty từ mấy giờ đến mấy giờ?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 2. Giờ làm việc"
+   }
+  ]
+ },
+ {
+  "question": "Lương thử việc bằng bao nhiêu phần trăm mức lương chính thức?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 4. Hợp đồng thử việc"
+   }
+  ]
+ },
+ {
+  "question": "Hồ sơ đề nghị thanh toán gồm những gì?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "quy-trinh-thanh-toan.pdf",
+    "page": 1
+   }
+  ]
+ },
+ {
+  "question": "Khoản thanh toán từ 50.000.000 đồng trở lên do ai phê duyệt?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "quy-trinh-thanh-toan.pdf",
+    "page": 2
+   }
+  ]
+ },
+ {
+  "question": "Thưởng hiệu quả quý tối đa bằng bao nhiêu?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "4.1. Thưởng hiệu quả quý"
+   }
+  ]
+ },
+ {
+  "question": "Sa thải được áp dụng khi nào?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Sa thải"
+   }
+  ]
+ },
+ {
+  "question": "Nhân viên muốn nghỉ việc phải báo trước bao nhiêu ngày?",
+  "group": "dung-chu",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 6. Chấm dứt HĐLĐ"
+   }
+  ]
+ },
+ {
+  "question": "nhân viên đi Đà Nẵng công tác được ăn bao nhiêu một ngày",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "dinh-muc-cong-tac-phi.xlsx",
+    "sheet": "Định mức 2025",
+    "row": 5
+   }
+  ]
+ },
+ {
+  "question": "chi 20 triệu thì ai ký duyệt?",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "quy-trinh-thanh-toan.pdf",
+    "page": 2
+   }
+  ]
+ },
+ {
+  "question": "quên chấm công thì phải báo ai",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 3. Chấm công"
+   }
+  ]
+ },
+ {
+  "question": "mua đồ khoảng 30 triệu thì cần mấy báo giá",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "quy-trinh-mua-hang.pdf",
+    "page": 2
+   }
+  ]
+ },
+ {
+  "question": "làm chưa đủ một năm thì thưởng tết tính sao",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "4.2. Thưởng tháng 13"
+   }
+  ]
+ },
+ {
+  "question": "phép năm dùng không hết thì có bị mất không",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "quy-dinh-nghi-phep-2023.docx",
+    "section": "3. Phép chưa dùng hết"
+   },
+   {
+    "filename": "quy-dinh-nghi-phep-2025.docx",
+    "section": "3. Phép chưa dùng hết"
+   }
+  ]
+ },
+ {
+  "question": "quên thẻ ra vào thì làm sao",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "faq-thuong-gap.xlsx",
+    "sheet": "Câu hỏi thường gặp",
+    "row": 4
+   }
+  ]
+ },
+ {
+  "question": "HĐLĐ thử việc mấy tháng?",
+  "group": "tu-ghep-viet-tat",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 4. Hợp đồng thử việc"
+   }
+  ]
+ },
+ {
+  "question": "BHXH công ty đóng bao nhiêu phần trăm?",
+  "group": "tu-ghep-viet-tat",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "1. Nguyên tắc chung"
+   }
+  ]
+ },
+ {
+  "question": "đăng ký nghỉ phép phải báo trước mấy ngày",
+  "group": "tu-ghep-viet-tat",
+  "expect": [
+   {
+    "filename": "quy-dinh-nghi-phep-2023.docx",
+    "section": "2. Đăng ký nghỉ phép"
+   },
+   {
+    "filename": "quy-dinh-nghi-phep-2025.docx",
+    "section": "2. Đăng ký nghỉ phép"
+   }
+  ]
+ },
+ {
+  "question": "TP có được phụ cấp điện thoại không",
+  "group": "tu-ghep-viet-tat",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "3. Phụ cấp",
+    "row": 4
+   }
+  ]
+ },
+ {
+  "question": "nghỉ ốm có được BHXH trả tiền không",
+  "group": "tu-ghep-viet-tat",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 9. Nghỉ ốm và thai sản"
+   }
+  ]
+ },
+ {
+  "question": "công tác phí đi Hà Nội của TP, khách sạn tối đa bao nhiêu",
+  "group": "tu-ghep-viet-tat",
+  "expect": [
+   {
+    "filename": "dinh-muc-cong-tac-phi.xlsx",
+    "sheet": "Định mức 2025",
+    "row": 4
+   }
+  ]
+ },
+ {
+  "question": "nghi phep nam bao nhieu ngay",
+  "group": "khong-dau",
+  "expect": [
+   {
+    "filename": "quy-dinh-nghi-phep-2023.docx",
+    "section": "1. Số ngày nghỉ phép năm"
+   },
+   {
+    "filename": "quy-dinh-nghi-phep-2025.docx",
+    "section": "1. Số ngày nghỉ phép năm"
+   }
+  ]
+ },
+ {
+  "question": "luong thu viec bang bao nhieu phan tram",
+  "group": "khong-dau",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 4. Hợp đồng thử việc"
+   }
+  ]
+ },
+ {
+  "question": "tam ung toi da bao nhieu phan tram du toan",
+  "group": "khong-dau",
+  "expect": [
+   {
+    "filename": "quy-trinh-thanh-toan.pdf",
+    "page": 3
+   }
+  ]
+ },
+ {
+  "question": "bao hanh thiet bi cong nghe toi thieu may thang",
+  "group": "khong-dau",
+  "expect": [
+   {
+    "filename": "quy-trinh-mua-hang.pdf",
+    "page": 3
+   }
+  ]
+ },
+ {
+  "question": "hệ số lương bậc 3 là bao nhiêu",
+  "group": "bang",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "2. Hệ số lương theo bậc",
+    "row": 4
+   }
+  ]
+ },
+ {
+  "question": "phụ cấp ăn trưa của nhân viên kinh doanh",
+  "group": "bang",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "3. Phụ cấp",
+    "row": 3
+   }
+  ]
+ },
+ {
+  "question": "xếp loại B thì nhân hệ số thưởng quý bao nhiêu",
+  "group": "bang",
+  "expect": [
+   {
+    "filename": "quy-che-luong-thuong.docx",
+    "section": "4.1. Thưởng hiệu quả quý",
+    "row": 3
+   }
+  ]
+ },
+ {
+  "question": "máy chiếu phòng họp tầng 3 đang tình trạng gì",
+  "group": "bang",
+  "expect": [
+   {
+    "filename": "danh-muc-tai-san.xlsx",
+    "sheet": "Tài sản",
+    "row": 7
+   }
+  ]
+ },
+ {
+  "question": "đi công tác nửa ngày có được tính đủ tiền ăn không",
+  "group": "bang",
+  "expect": [
+   {
+    "filename": "dinh-muc-cong-tac-phi.xlsx",
+    "sheet": "Ghi chú",
+    "row": 2
+   }
+  ]
+ },
+ {
+  "question": "xin giấy xác nhận đang làm việc để vay ngân hàng mất mấy ngày",
+  "group": "bang",
+  "expect": [
+   {
+    "filename": "faq-thuong-gap.xlsx",
+    "sheet": "Câu hỏi thường gặp",
+    "row": 5
+   }
+  ]
+ },
+ {
+  "question": "khám sức khỏe định kỳ diễn ra khi nào, ở đâu",
+  "group": "hai-cot",
+  "expect": [
+   {
+    "filename": "ban-tin-noi-bo-hai-cot.pdf",
+    "page": 1
+   }
+  ]
+ },
+ {
+  "question": "hệ thống ERP bảo trì lúc mấy giờ",
+  "group": "hai-cot",
+  "expect": [
+   {
+    "filename": "ban-tin-noi-bo-hai-cot.pdf",
+    "page": 2
+   }
+  ]
+ },
+ {
+  "question": "muốn đăng ký đá bóng nội bộ thì gặp ai",
+  "group": "hai-cot",
+  "expect": [
+   {
+    "filename": "ban-tin-noi-bo-hai-cot.pdf",
+    "page": 2
+   }
+  ]
+ },
+ {
+  "question": "công ty có cho nghỉ kết hôn hưởng nguyên lương không?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "làm thêm giờ vào ngày lễ được trả bao nhiêu phần trăm lương?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "nhân viên có được làm việc từ xa mấy ngày một tuần?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "công ty hỗ trợ học phí học ngoại ngữ bao nhiêu?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "công ty có cho nuôi thú cưng không?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "thời tiết Hà Nội ngày mai thế nào?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "cách nấu phở bò ngon",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "giá vàng hôm nay bao nhiêu?",
+  "group": "khong-lien-quan",
+  "expect": []
+ },
+ {
+  "question": "đội nào vô địch World Cup 2022?",
+  "group": "khong-lien-quan",
+  "expect": []
+ }
+]
