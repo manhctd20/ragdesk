@@ -37,19 +37,22 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  Q["Câu hỏi"] --> S["Tìm theo nghĩa và theo từ khoá,<br>trộn lại lấy 5 đoạn"]
-  S --> G{"Đoạn giống nhất<br>đủ gần câu hỏi?"}
-  G -- không --> NF["Không tìm thấy<br>vẫn mở xem được 5 đoạn gần nhất"]
-  G -- có --> RR{"Chấm lại từng đoạn:<br>còn đoạn trả lời được?"}
-  RR -- không --> NF
-  RR -- có --> M{"Chế độ"}
-  M -- Chỉ nội bộ --> SH["Hiện 1 đến 5 đoạn<br>kèm tên file, trang, mục, dòng"]
+  Q["Câu hỏi"] --> S["Tìm theo nghĩa (vector) và theo từ khoá (BM25),<br>trộn lại lấy 5 đoạn"]
+  S --> G{"Đoạn giống nhất<br>đủ gần?"}
+  G -- không --> NF["Không tìm thấy<br>vẫn xem được 5 đoạn gần nhất"]
+  G -- có --> D{"Câu hỏi<br>có dấu?"}
+  D -- không --> M
+  D -- có --> RR["Reranker chấm lại từng đoạn<br>bge-reranker-v2-m3, bỏ đoạn điểm thấp"]
+  RR --> C{"Còn đoạn?"}
+  C -- không --> NF
+  C -- có --> M{"Chế độ"}
+  M -- Chỉ nội bộ --> SH["Hiện 1 đến 5 đoạn<br>kèm file, trang, mục, dòng"]
   M -- AI ngoài --> AI["Gửi câu hỏi và các đoạn đó<br>cho Claude, OpenAI hoặc Gemini"]
   AI --> ANS["Câu trả lời hiện dần,<br>có số trích dẫn"]
 ```
 
 - Mọi bước tìm và chấm chạy trên máy chủ bằng CPU. Chỉ nhánh **AI ngoài** gửi dữ liệu ra ngoài: câu hỏi và các đoạn đã chọn, không bao giờ gửi cả file.
-- Câu gõ không dấu bỏ qua bước chấm lại (model chấm sai câu không dấu), nên vẫn ra đủ 5 đoạn.
+- Câu gõ không dấu bỏ qua reranker (model chấm sai câu không dấu), nên vẫn ra đủ 5 đoạn. Tắt hẳn reranker bằng `RERANK_MODEL=off`.
 - Hỏi nối tiếp: chế độ nội bộ ghép câu trước vào khi tìm; AI ngoài nhờ AI viết lại thành câu đủ nghĩa rồi mới tìm.
 - Hai ngưỡng (`MIN_RELEVANCE`, `RERANK_MIN`) chỉnh được bằng biến môi trường, xem [docs/van-hanh.md](docs/van-hanh.md).
 
