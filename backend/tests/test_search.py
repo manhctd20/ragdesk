@@ -4,7 +4,7 @@ import unicodedata
 import pytest
 
 from ingest import Chunk
-from search import Bm25Holder, Embedder, Index, bm25_rank, rrf, search, tokenize, unaccent
+from search import Bm25Holder, Embedder, Index, bm25_rank, retrieve, rrf, search, tokenize, top_similarity, unaccent
 
 DIM = 384
 
@@ -203,7 +203,8 @@ def test_search_result_shape_score_and_matched(index):
     res = search("Phép năm, phép nghỉ?", emb, index, holder, top=5)
     assert emb.queries == ["Phép năm, phép nghỉ?"]
     top = res[0]
-    assert set(top) == {"id", "text", "meta", "score", "matched"}
+    assert set(top) == {"id", "text", "meta", "score", "similarity", "matched"}
+    assert top["similarity"] == pytest.approx(1.0, abs=1e-5)
     assert top["id"] == "A:0"
     assert top["text"] == "Nghỉ phép năm 12 ngày"
     assert top["meta"]["doc_id"] == "A"
@@ -277,3 +278,45 @@ def test_search_unaccented_query_matches_and_highlights_accented(index, question
     res = search(question, FixedEmbedder(), index, holder, top=1)
     assert res[0]["id"] == "A:1"
     assert res[0]["matched"] == ["nghỉ", "phép"]
+
+
+def test_dense_scored_cosine(index):
+    add_doc(index, "A", ["một"])  # vec(0)
+    index.add("B", [Chunk("hai", {"page": 1})], [vec(1)])
+    scored = dict(index.dense_scored(vec(0), frozenset({"A", "B"})))
+    assert scored["A:0"] == pytest.approx(1.0, abs=1e-5)
+    assert scored["B:0"] == pytest.approx(0.0, abs=1e-5)
+    assert [i for i, _ in index.dense_scored(vec(0), frozenset({"A", "B"}))] == ["A:0", "B:0"]
+    assert index.dense_scored(vec(0), frozenset()) == []
+
+
+def test_top_similarity_pure():
+    assert top_similarity([("a", 0.2), ("b", 0.7)]) == 0.7
+    assert top_similarity([]) is None
+
+
+def test_top_similarity_uses_dense_branch(index):
+    # P leads after the merge (BM25 rank 1 + dense rank 2) but is orthogonal to the query;
+    # Q is the best vector match yet is cut from the shown hits.
+    holder = Bm25Holder()
+    index.add("A", [Chunk("nghỉ phép năm", {"page": 1}), Chunk("xe công", {"page": 2}), Chunk("mua sắm", {"page": 3})],
+              [vec(1), vec(0), vec(2)])
+    rebuild(holder, index)
+    hits, top = retrieve("nghỉ phép năm", FixedEmbedder(), index, holder, top=1)
+    assert [h["id"] for h in hits] == ["A:0"]
+    assert hits[0]["similarity"] == pytest.approx(0.0, abs=1e-5)
+    assert top == pytest.approx(1.0, abs=1e-5)
+
+
+def test_retrieve_bm25_only_hit_has_no_similarity(index):
+    holder = Bm25Holder()
+    index.add("A", [Chunk(f"đoạn số {i}", {"page": i}) for i in range(25)] + [Chunk("hiếm gặp zzz", {"page": 99})],
+              [vec(0)] * 25 + [vec(300)])
+    rebuild(holder, index)
+    hits, _ = retrieve("zzz", FixedEmbedder(), index, holder, top=30)
+    rare = next(h for h in hits if h["text"] == "hiếm gặp zzz")  # outside the vector top 20
+    assert rare["similarity"] is None
+
+
+def test_retrieve_empty_index(index):
+    assert retrieve("q", ExplodingEmbedder(), index, Bm25Holder()) == ([], None)

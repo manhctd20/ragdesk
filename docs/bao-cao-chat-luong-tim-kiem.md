@@ -101,3 +101,65 @@ Lý do:
 - BM25 dựng lại trong RAM khi khởi động nên không cần index lại file đã nạp.
 
 Còn trượt sau thay đổi (5 câu): 1 câu `khong-dau` ("nghi phep nam bao nhieu ngay": đúng hai file quy định nghỉ phép nhưng sai đoạn, hạng 1 đến 5 toàn đoạn khác mục 1), 4 câu hỏi vào bảng Word (thiếu `row`, chờ task đọc bảng). Câu `khong-dau` còn lại này cần xem lại sau khi có các thay đổi khác.
+
+## 2. Câu không liên quan
+
+Lệnh đã chạy (ngưỡng tạm `MIN_RELEVANCE = 0.0` để chỉ đo, rồi đặt ngưỡng và chạy lại):
+
+```
+cd backend
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --min-relevance 0.8313   # tham chiếu: ngưỡng tối đa
+```
+
+Độ giống (cosine) tính từ nhánh vector của Chroma: collection dùng không gian `l2` mặc định nên `distances` trả về là **L2 bình phương** `d2`; vector đã chuẩn hoá nên `cos = 1 - d2 / 2` (kiểm bằng thực nghiệm: vector trùng 0,0, vuông góc 2,0, lệch 45 độ 0,586). Giá trị lấy là cosine **cao nhất của cả nhánh vector** (top 20), không phụ thuộc đoạn đứng đầu sau khi trộn với BM25.
+
+### Cosine cao nhất theo nhóm
+
+| Nhóm | Số câu | Thấp nhất | Cao nhất |
+|---|---|---|---|
+| khong-dau | 4 | **0,8313** | 0,8467 |
+| dien-dat-khac | 9 | 0,8498 | 0,9014 |
+| tu-ghep-viet-tat | 6 | 0,8549 | 0,9264 |
+| hai-cot | 3 | 0,8549 | 0,8948 |
+| dung-chu | 7 | 0,8724 | 0,9135 |
+| bang | 6 | 0,8725 | 0,9167 |
+| **Câu có đáp án (35)** | 35 | **0,8313** | 0,9264 |
+| **khong-lien-quan** | 9 | 0,7910 | 0,8942 |
+
+### 9 câu không liên quan, xếp theo cosine
+
+| Cosine | Câu | Chặn ở ngưỡng 0,81 |
+|---|---|---|
+| 0,7910 | thời tiết Hà Nội ngày mai thế nào? | có |
+| 0,7923 | đội nào vô địch World Cup 2022? | có |
+| 0,8054 | cách nấu phở bò ngon | có |
+| 0,8130 | công ty có cho nuôi thú cưng không? | không |
+| 0,8164 | giá vàng hôm nay bao nhiêu? | không |
+| 0,8453 | công ty hỗ trợ học phí học ngoại ngữ bao nhiêu? | không |
+| 0,8653 | công ty có cho nghỉ kết hôn hưởng nguyên lương không? | không |
+| 0,8657 | làm thêm giờ vào ngày lễ được trả bao nhiêu phần trăm lương? | không |
+| 0,8942 | nhân viên có được làm việc từ xa mấy ngày một tuần? | không |
+
+### Chọn ngưỡng
+
+- Mức cao nhất không chặn nhầm câu có đáp án nào: **khoảng 0,8312** (câu `khong-dau` "tam ung toi da bao nhieu phan tram du toan", 0,8313; ngưỡng 0,8313 đã chặn nhầm 1/35 câu).
+- Trừ khoảng an toàn 0,02: 0,8112, **làm tròn xuống thành `MIN_RELEVANCE = 0.81`** (hằng số trong `backend/ask.py`, ghi đè bằng biến môi trường `MIN_RELEVANCE`).
+
+| | Trước (ngưỡng 0,0) | Sau (ngưỡng 0,81) |
+|---|---|---|
+| `chan_nham` (câu có đáp án bị chặn) | 0,00 (0/35) | **0,00 (0/35)** |
+| `bat_duoc` (câu không liên quan bị chặn) | 0,00 (0/9) | **0,33 (3/9)** |
+| `vitri@5`, `MRR`, `file@5` | 0,86 / 0,77 / 1,00 | không đổi |
+
+Để so sánh, ngưỡng tối đa 0,8313 bắt được 5/9 nhưng đã chặn nhầm 1 câu; không dùng vì vi phạm nguyên tắc "thà lọt còn hơn giấu".
+
+### Quyết định
+
+**Bật ngưỡng 0,81.** Theo quy tắc nó không chặn nhầm câu nào, nên giữ dù tỉ lệ bắt được thấp.
+
+### Nhận xét
+
+- **`bat_duoc` = 33%, dưới một nửa**: ngưỡng chỉ bắt được câu lạc đề hẳn (thời tiết, bóng đá, nấu ăn). Các câu cùng chủ đề công ty nhưng tài liệu không có (nghỉ kết hôn, làm thêm giờ ngày lễ, làm việc từ xa, học phí) có cosine 0,85 đến 0,89, nằm lẫn trong dải của câu có đáp án (0,83 đến 0,93). Một ngưỡng cosine không tách được hai loại này.
+- **Đề xuất cho đợt sau: làm reranker** (cross-encoder chấm lại cặp câu hỏi và đoạn) để bắt được loại "gần chủ đề nhưng không có đáp án".
+- Model `multilingual-e5-small` cho cosine dồn vào dải hẹp (0,79 đến 0,93), nên khoảng an toàn 0,02 chiếm phần đáng kể của dải. Bộ mẫu nhỏ (35 câu có đáp án, 9 câu không liên quan, dữ liệu giả); ngưỡng cần đo lại khi có dữ liệu thật.

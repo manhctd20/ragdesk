@@ -51,6 +51,7 @@ Khai một, hai hoặc cả ba nhà đều được. Thứ tự nhà luôn là C
 | `GEMINI_API_KEY` + `GEMINI_MODEL` | | | Như trên, cho Gemini |
 | `DATA_DIR` | | `./data` | Nơi lưu file gốc, SQLite và index |
 | `MAX_UPLOAD_MB` | | `20` | Cỡ tối đa mỗi file |
+| `MIN_RELEVANCE` | | `0.81` | Ngưỡng cosine "không liên quan": đoạn vector tốt nhất thấp hơn thì không gọi AI trả lời (xem báo cáo chất lượng tìm kiếm, mục 2) |
 | `FASTEMBED_CACHE_PATH` | | `/tmp/fastembed_cache` | Nơi lưu model embedding. Nên đặt ra ngoài `/tmp` |
 | `ANONYMIZED_TELEMETRY` | | | Đặt `False` để Chroma không gửi telemetry |
 

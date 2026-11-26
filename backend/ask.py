@@ -5,6 +5,14 @@ from collections.abc import Callable, Iterator, Mapping
 logger = logging.getLogger(__name__)
 
 HISTORY_TURNS = 3
+# Minimum cosine between the question and the best vector match; below it nothing is "relevant enough".
+# Set from the corpus measurement (docs/bao-cao-chat-luong-tim-kiem.md, section 2); MIN_RELEVANCE env overrides.
+MIN_RELEVANCE = 0.81
+
+
+def is_low_relevance(top_similarity: float | None, min_relevance: float) -> bool:
+    """Shared by the ask pipeline and eval.py. No vector hit (None) is never judged low."""
+    return top_similarity is not None and top_similarity < min_relevance
 
 
 def external_turns(history: list[dict], provider: str) -> list[dict]:
@@ -25,10 +33,11 @@ def ask_events(
     provider: str | None,
     history: list[dict],
     *,
-    find: Callable[[str, str], list[dict]],
+    find: Callable[[str, str], tuple[list[dict], float | None]],
     stream_answer: Callable,
     rewrite: Callable,
     env: Mapping[str, str],
+    min_relevance: float,
 ) -> Iterator[tuple[str, dict]]:
     history = history[-HISTORY_TURNS:]
     query = question
@@ -42,9 +51,11 @@ def ask_events(
             logger.exception("Question rewrite failed")
         if rewritten:
             question = query = rewritten
-    chunks = find(query, question)
-    yield "meta", {"sources": chunks, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào"}
-    if chunks and provider is not None:
+    chunks, top = find(query, question)
+    low = bool(chunks) and is_low_relevance(top, min_relevance)
+    yield "meta", {"sources": chunks, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào",
+                   "low_relevance": low}
+    if chunks and not low and provider is not None:
         try:
             got_text = False
             with closing(stream_answer(question, chunks, provider, env)) as stream:

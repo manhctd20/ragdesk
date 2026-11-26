@@ -722,8 +722,8 @@ def test_sse_stream_closes_upstream_on_early_close():
         finally:
             closed.append(True)
 
-    events = ask_events("q", "external", "gemini", [], find=lambda q, h: [{"id": "1"}],
-                        stream_answer=stream_answer, rewrite=None, env={})
+    events = ask_events("q", "external", "gemini", [], find=lambda q, h: ([{"id": "1"}], 1.0),
+                        stream_answer=stream_answer, rewrite=None, env={}, min_relevance=0.0)
     gen = sse_stream(events)
     assert next(gen).startswith("event: meta")
     assert next(gen).startswith("event: delta")
@@ -772,3 +772,37 @@ def test_catch_all_without_dist(open_client, tmp_path):
     c = open_client(frontend_dir=tmp_path / "khong-co-dist")
     assert c.get("/tai-lieu").status_code == 404
     assert c.get("/api/config").status_code == 200
+
+
+def test_ask_json_and_stream_agree_on_low_relevance(open_client, make_env, tmp_path):
+    # FakeEmbedder gives every chunk cosine 1.0 with the query
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL, MIN_RELEVANCE="1.5"), llm=fake)
+    upload_ready(c, tmp_path)
+    for mode in ("external", "internal"):
+        j = ask(c, mode=mode).json()
+        events = parse_sse(ask(c, mode=mode, path="/api/ask/stream").text)
+        assert [n for n, _ in events] == ["meta", "done"]
+        meta = events[0][1]
+        assert j["low_relevance"] is meta["low_relevance"] is True
+        assert j["answer"] is None and j["llm_error"] is None and j["message"] is None
+        assert meta["message"] is None and meta["sources"] == j["sources"] and 0 < len(j["sources"]) <= 5
+    assert fake.calls == []
+
+
+def test_min_relevance_env_override(open_client, make_env, tmp_path):
+    fake = FakeLLM()
+    c = open_client(make_env(**EXTERNAL, MIN_RELEVANCE="0.5"), llm=fake)
+    upload_ready(c, tmp_path)
+    j = ask(c, mode="external").json()
+    assert j["low_relevance"] is False and j["answer"] == "Trả lời [1]" and len(fake.calls) == 1
+    c2 = open_client(make_env(**EXTERNAL, MIN_RELEVANCE="1.01"), llm=fake)
+    assert ask(c2, mode="external").json()["low_relevance"] is True
+    assert len(fake.calls) == 1
+
+
+def test_min_relevance_default_is_constant(open_client, tmp_path):
+    from ask import MIN_RELEVANCE
+    c = open_client()
+    upload_ready(c, tmp_path)
+    assert ask(c).json()["low_relevance"] is (1.0 < MIN_RELEVANCE)

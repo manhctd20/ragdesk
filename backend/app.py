@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 
 import llm
 import store
-from ask import ask_events
-from search import Bm25Holder, Embedder, Index, search
+from ask import MIN_RELEVANCE, ask_events
+from search import Bm25Holder, Embedder, Index, retrieve
 from worker import Worker
 
 DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -66,6 +66,7 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
     max_mb = int(env.get("MAX_UPLOAD_MB") or 20)
     allow_external = (env.get("ALLOW_EXTERNAL") or "").lower() == "true"
     data_dir = Path(env.get("DATA_DIR") or "./data")
+    min_relevance = float(env.get("MIN_RELEVANCE") or MIN_RELEVANCE)
     configured = llm.providers(env)
 
     @asynccontextmanager
@@ -157,8 +158,8 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
         s = app.state
         events = ask_events(
             body.question, body.mode, provider, [t.model_dump() for t in body.history],
-            find=lambda query, highlight: search(query, s.embedder, s.index, s.bm25, highlight=highlight),
-            stream_answer=stream_answer, rewrite=rewrite, env=env,
+            find=lambda query, highlight: retrieve(query, s.embedder, s.index, s.bm25, highlight=highlight),
+            stream_answer=stream_answer, rewrite=rewrite, env=env, min_relevance=min_relevance,
         )
         return provider, events
 
@@ -166,7 +167,7 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
     def ask(body: AskBody):
         provider, events = start_ask(body)
         result = {"answer": None, "sources": [], "llm_error": None, "message": None, "query": None,
-                  "provider": provider}
+                  "low_relevance": False, "provider": provider}
         parts = []
         for name, data in events:
             if name == "delta":

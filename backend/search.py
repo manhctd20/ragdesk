@@ -53,13 +53,19 @@ class Index:
         got = self.collection.get(include=["documents"])
         return got["ids"], got["documents"]
 
-    def dense(self, qvec, doc_ids: frozenset[str], k: int = 20) -> list[str]:
+    def dense_scored(self, qvec, doc_ids: frozenset[str], k: int = 20) -> list[tuple[str, float]]:
         if not doc_ids or self.count() == 0:
             return []
         res = self.collection.query(
-            query_embeddings=[qvec], n_results=k, where={"doc_id": {"$in": sorted(doc_ids)}}
+            query_embeddings=[qvec], n_results=k, where={"doc_id": {"$in": sorted(doc_ids)}},
+            include=["distances"],
         )
-        return res["ids"][0]
+        # The collection uses Chroma's default "l2" space, so distance is squared L2; for unit vectors
+        # |a-b|^2 = 2 - 2cos, hence cos = 1 - d2/2 (the embedder normalizes, see TextEmbedding above).
+        return [(i, 1 - d2 / 2) for i, d2 in zip(res["ids"][0], res["distances"][0])]
+
+    def dense(self, qvec, doc_ids: frozenset[str], k: int = 20) -> list[str]:
+        return [i for i, _ in self.dense_scored(qvec, doc_ids, k)]
 
     def get(self, ids: list[str]) -> list[dict]:
         if not ids:
@@ -124,18 +130,29 @@ def rrf(*rankings: list[str], k: int = 60) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda x: -x[1])
 
 
-def search(question: str, embedder, index: Index, bm25: Bm25Holder, top: int = 5, highlight: str | None = None) -> list[dict]:
+def top_similarity(scored: list[tuple[str, float]]) -> float | None:
+    """Best cosine of the vector branch, whether or not that chunk survives the merge."""
+    return max((c for _, c in scored), default=None)
+
+
+def retrieve(question: str, embedder, index: Index, bm25: Bm25Holder, top: int = 5,
+             highlight: str | None = None) -> tuple[list[dict], float | None]:
+    """Hits (merged BM25 + vector) and the best vector cosine of the whole vector branch."""
     bm, ids, doc_ids = bm25.current
     if not doc_ids or index.count() == 0:
-        return []
-    tokens = bm25.tokenize(question)
-    ranked = rrf(index.dense(embedder.embed_query(question), doc_ids, 20), bm25_rank(bm, ids, tokens, 20))[:top]
-    scores = dict(ranked)
+        return [], None
+    scored = index.dense_scored(embedder.embed_query(question), doc_ids, 20)
+    ranked = rrf([i for i, _ in scored], bm25_rank(bm, ids, bm25.tokenize(question), 20))[:top]
+    scores, cosines = dict(ranked), dict(scored)
     shown = _syllables(highlight or question)
     results = []
     for hit in index.get([cid for cid, _ in ranked]):
         # accented syllables of the chunk whose unaccented form matches a shown one (so "nghi" highlights "nghỉ")
         words = list(dict.fromkeys(_syllables(hit["text"])))
         matched = [w for p in dict.fromkeys(map(unaccent, shown)) for w in words if unaccent(w) == p]
-        results.append({**hit, "score": scores[hit["id"]], "matched": matched})
-    return results
+        results.append({**hit, "score": scores[hit["id"]], "similarity": cosines.get(hit["id"]), "matched": matched})
+    return results, top_similarity(scored)
+
+
+def search(question: str, embedder, index: Index, bm25: Bm25Holder, top: int = 5, highlight: str | None = None) -> list[dict]:
+    return retrieve(question, embedder, index, bm25, top, highlight)[0]

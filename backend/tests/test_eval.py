@@ -159,3 +159,41 @@ def test_main_empty_index_returns_1(data_dir, tmp_path, capsys):
     path = write_items(tmp_path, [{"question": "q", "filename": "a.pdf", "where": ""}])
     assert ev.main(["eval.py", path]) == 1
     assert "Chưa có tài liệu nào" in capsys.readouterr().out
+
+
+def test_score_low_relevance_uses_ask_rule():
+    item = ev.normalize({"question": "q", "group": "g", "expect": []})
+    # best dense chunk is outside the shown hits: only the top cosine matters
+    low = ev.score(item, hits("a.pdf"), 0.1, top_similarity=0.3, min_relevance=0.5)
+    ok = ev.score(item, hits("a.pdf"), 0.1, top_similarity=0.6, min_relevance=0.5)
+    assert low["low_relevance"] and low["top_similarity"] == 0.3 and not ok["low_relevance"]
+    assert not ev.score(item, [], 0.1, top_similarity=None, min_relevance=0.5)["low_relevance"]
+
+
+def test_run_corpus_records_top_similarity_and_flag(tmp_path, monkeypatch):
+    import openpyxl
+
+    d = tmp_path / "corpus" / "tc"
+    d.mkdir(parents=True)
+    wb = openpyxl.Workbook()
+    wb.active.title = "S"
+    wb.active.append(["Khoản", "Mức"])
+    wb.active.append(["Công tác phí", "500.000"])
+    wb.save(d / "dm.xlsx")
+    monkeypatch.setattr(ev, "Embedder", FakeEmbedder)
+    qs = [{"question": "công tác phí", "group": "bang", "expect": [{"filename": "dm.xlsx"}]}]
+    rows, _ = ev.run_corpus(qs, tmp_path / "corpus", {}, min_relevance=0.0)
+    assert rows[0]["top_similarity"] == pytest.approx(1.0, abs=1e-5) and rows[0]["low_relevance"] is False
+    rows, _ = ev.run_corpus(qs, tmp_path / "corpus", {}, min_relevance=1.5)
+    assert rows[0]["low_relevance"] is True
+
+
+def test_print_report_lists_top_cosine_and_flag_arg(capsys):
+    rows = [
+        {**row("g", 1, 1), "question": "có", "top_similarity": 0.8123, "expect": [], "where": "", "got": []},
+        {**row("khong-lien-quan", None, None, low=True, has=False), "question": "lạc đề", "top_similarity": 0.7001,
+         "expect": [], "where": "", "got": []},
+    ]
+    ev.print_report(rows)
+    out = capsys.readouterr().out
+    assert "0.8123" in out and "0.7001" in out and "thấp nhất 0.8123" in out and "cao nhất 0.7001" in out

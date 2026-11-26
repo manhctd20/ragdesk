@@ -11,14 +11,14 @@ def turn(question, mode="external", provider="claude", answer="trả lời"):
 
 
 class Fakes:
-    def __init__(self, chunks=CHUNKS, rewritten="Câu viết lại?", deltas=("Cần ", "duyệt [1]."), fail_after=None, rewrite_exc=None):
-        self.chunks, self.rewritten, self.deltas = chunks, rewritten, deltas
+    def __init__(self, chunks=CHUNKS, rewritten="Câu viết lại?", deltas=("Cần ", "duyệt [1]."), fail_after=None, rewrite_exc=None, top=0.9):
+        self.chunks, self.rewritten, self.deltas, self.top = chunks, rewritten, deltas, top
         self.fail_after, self.rewrite_exc = fail_after, rewrite_exc
         self.find_calls, self.rewrite_calls, self.stream_calls = [], [], []
 
     def find(self, query, highlight):
         self.find_calls.append((query, highlight))
-        return self.chunks
+        return self.chunks, self.top
 
     def rewrite(self, question, turns, provider, env):
         self.rewrite_calls.append((question, turns, provider, env))
@@ -33,11 +33,12 @@ class Fakes:
             raise RuntimeError("boom")
 
 
-def run(fakes, question="thế ai duyệt?", mode="external", provider="claude", history=()):
+def run(fakes, question="thế ai duyệt?", mode="external", provider="claude", history=(), min_relevance=0.5):
     return list(
         ask_events(
             question, mode, provider, list(history),
             find=fakes.find, stream_answer=fakes.stream_answer, rewrite=fakes.rewrite, env={"K": "v"},
+            min_relevance=min_relevance,
         )
     )
 
@@ -51,7 +52,7 @@ def test_internal_never_calls_llm():
     events = run(f, mode="internal", provider=None, history=[turn("a")])
     assert names(events) == ["meta", "done"]
     assert f.rewrite_calls == [] and f.stream_calls == []
-    assert events[0][1] == {"sources": CHUNKS, "query": None, "message": None}
+    assert events[0][1] == {"sources": CHUNKS, "query": None, "message": None, "low_relevance": False}
 
 
 def test_internal_query_prepends_previous_question():
@@ -149,3 +150,32 @@ def test_only_last_three_turns_used():
     run(f, history=[turn(f"câu {i}", answer=f"đáp {i}") for i in range(5)])
     assert HISTORY_TURNS == 3
     assert [t["question"] for t in f.rewrite_calls[0][1]] == ["câu 2", "câu 3", "câu 4"]
+
+
+@pytest.mark.parametrize("mode,provider", [("external", "claude"), ("internal", None)])
+def test_low_relevance_skips_answer(mode, provider):
+    f = Fakes(top=0.3)
+    events = run(f, mode=mode, provider=provider)
+    assert names(events) == ["meta", "done"]
+    assert events[0][1] == {"sources": CHUNKS, "query": None, "message": None, "low_relevance": True}
+    assert f.stream_calls == []
+
+
+def test_low_relevance_still_rewrites_follow_up():
+    f = Fakes(top=0.3, rewritten="Nghỉ ốm?")
+    events = run(f, history=[turn("nghỉ phép", answer="12 ngày")])
+    assert len(f.rewrite_calls) == 1 and f.stream_calls == []
+    assert events[0][1]["query"] == "Nghỉ ốm?" and events[0][1]["low_relevance"] is True
+
+
+@pytest.mark.parametrize("top,expected", [(0.5, False), (0.51, False), (0.49, True), (None, False)])
+def test_threshold_boundary(top, expected):
+    f = Fakes(top=top)
+    assert run(f)[0][1]["low_relevance"] is expected
+    assert bool(f.stream_calls) is (not expected)
+
+
+def test_no_documents_is_not_low_relevance():
+    f = Fakes(chunks=[], top=None)
+    meta = run(f)[0][1]
+    assert meta["low_relevance"] is False and meta["message"] == NO_DOCS
