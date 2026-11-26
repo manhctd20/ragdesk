@@ -44,7 +44,7 @@ def write_pdf(path, font, pages):
             for para in col:
                 head = para.startswith("# ")
                 pdf.set_font("Noto", size=15 if head else 11)
-                pdf.multi_cell(width, 7 if head else 6, para[2:] if head else para, new_x="LEFT", new_y="NEXT")
+                pdf.multi_cell(width, 7 if head else 6, para[2:] if head else para, new_x="LEFT", new_y="NEXT", align="L")
                 pdf.ln(2)
     pdf.output(path)
 
@@ -109,6 +109,27 @@ NOI_QUY = [
     ("h2", "Điều 11. Bảo mật thông tin"),
     ("p", "Nhân viên không được sao chép, gửi ra ngoài hoặc đăng tải tài liệu nội bộ lên các dịch vụ lưu trữ cá nhân. "
           "Khi nghỉ việc, nhân viên bàn giao toàn bộ tài liệu và tài khoản cho TP."),
+    ("h1", "Chương V. Quản lý tài sản"),
+    ("h2", "Điều 12. Quản lý và sử dụng tài sản công ty"),
+    ("p", "Tài sản của công ty gồm máy tính, màn hình, điện thoại, máy in, nội thất và các thiết bị văn phòng khác được "
+          "giao cho nhân viên hoặc phòng ban quản lý. Mỗi tài sản có mã riêng, được ghi vào danh mục tài sản và gắn tem "
+          "kiểm kê. Nhân viên không được tự ý bóc tem, thay đổi cấu hình hoặc cho người ngoài công ty sử dụng tài sản "
+          "được giao."),
+    ("p", "Khi nhận tài sản, nhân viên ký biên bản bàn giao có xác nhận tình trạng ban đầu. Nhân viên chịu trách nhiệm "
+          "bảo quản tài sản trong suốt thời gian sử dụng, giữ gìn sạch sẽ, không để chất lỏng gần thiết bị điện tử và "
+          "không mang thiết bị ra khỏi văn phòng nếu chưa được TP đồng ý bằng văn bản hoặc email. Thiết bị mang ra ngoài "
+          "phải được cài mật khẩu và mã hóa ổ đĩa theo hướng dẫn của phòng Công nghệ."),
+    ("p", "Việc sửa chữa, nâng cấp hoặc cài thêm phần mềm do phòng Công nghệ thực hiện. Nhân viên gửi yêu cầu qua hệ "
+          "thống hỗ trợ nội bộ, ghi rõ mã tài sản và mô tả sự cố. Phòng Công nghệ phản hồi trong 1 ngày làm việc và hoàn "
+          "tất sửa chữa trong 5 ngày làm việc, trừ trường hợp phải gửi hãng bảo hành. Trong thời gian sửa chữa, nhân "
+          "viên được mượn thiết bị thay thế nếu còn."),
+    ("p", "Hằng năm vào tháng 12, phòng Hành chính phối hợp phòng Kế toán kiểm kê toàn bộ tài sản. Nhân viên có trách "
+          "nhiệm có mặt hoặc cử người đại diện để xác nhận tài sản đang giữ. Tài sản không tìm thấy khi kiểm kê mà không "
+          "có biên bản báo mất được xem là mất do lỗi của người giữ."),
+    ("p", "Trường hợp tài sản bị mất hoặc hư hỏng do lỗi của nhân viên, nhân viên phải báo cho TP và phòng Hành chính "
+          "trong vòng 24 giờ kể từ khi phát hiện. Mức bồi thường bằng 50% giá trị còn lại của tài sản theo sổ sách nếu "
+          "nhân viên đã báo đúng hạn, và bằng 100% giá trị còn lại nếu báo chậm hoặc cố ý làm hỏng. Khoản bồi thường "
+          "được trừ vào lương trong tối đa 3 kỳ lương liên tiếp."),
 ]
 
 LUONG = [
@@ -200,6 +221,22 @@ THANH_TOAN = [
         "6. Hoàn ứng",
         "Số tiền tạm ứng chi không hết phải nộp lại quỹ trong ngày quyết toán. Số tiền chi vượt được thanh toán bổ "
         "sung sau khi TP xác nhận.",
+    ]],
+    [[
+        "7. Chứng từ và hóa đơn",
+        "Mọi khoản chi phải có chứng từ gốc. Hóa đơn điện tử được lưu dưới dạng tệp PDF kèm tệp XML và đặt tên theo cú "
+        "pháp ngày, số hóa đơn, tên nhà cung cấp. Hóa đơn giấy phải còn nguyên, không tẩy xóa, không rách nát; trường "
+        "hợp hóa đơn bị mất, người đề nghị xin bản sao có xác nhận của nhà cung cấp. Hóa đơn xuất sai thông tin phải "
+        "được điều chỉnh hoặc xuất lại trong vòng 7 ngày, nếu không kế toán có quyền từ chối thanh toán. Hóa đơn có "
+        "ngày lập sau ngày nghiệm thu hàng hóa hoặc dịch vụ phải kèm giải trình bằng văn bản của người đề nghị.",
+        "8. Hình thức chi trả",
+        "Khoản chi từ 25.000.000 đồng trở lên phải thanh toán bằng chuyển khoản vào tài khoản của nhà cung cấp, không "
+        "thanh toán bằng tiền mặt. Khoản chi dưới 25.000.000 đồng được phép thanh toán bằng tiền mặt qua quỹ khi có "
+        "phiếu chi do kế toán trưởng ký. Mọi khoản chi bằng ngoại tệ phải được Giám đốc tài chính phê duyệt trước và "
+        "quy đổi theo tỷ giá bán của ngân hàng giao dịch tại ngày chi.",
+        "9. Chi phí nhỏ lẻ",
+        "Chi phí nhỏ lẻ dưới 200.000 đồng mỗi lần mà không có hóa đơn được thanh toán bằng bảng kê tự lập có chữ ký "
+        "của TP, tổng cộng tối đa 1.000.000 đồng mỗi người mỗi tháng. Chi phí vượt mức này bắt buộc có hóa đơn hợp lệ.",
     ]],
 ]
 
@@ -312,7 +349,15 @@ FAQ = {
          "mức lương hay không. Phòng Nhân sự xử lý trong 3 ngày làm việc kể từ khi nhận đủ thông tin và gửi bản "
          "scan qua email, bản gốc có dấu đỏ nhận tại quầy lễ tân tầng 1. Nhân viên đang thử việc chỉ được cấp giấy "
          "xác nhận không ghi mức lương. Trường hợp cần ngay trong ngày, nhân viên liên hệ trực tiếp trưởng phòng "
-         "Nhân sự để được ưu tiên, nhưng vẫn phải gửi email theo mẫu để lưu hồ sơ.", "Nhân sự"],
+         "Nhân sự để được ưu tiên, nhưng vẫn phải gửi email theo mẫu để lưu hồ sơ. Giấy xác nhận có hiệu lực 30 ngày "
+         "kể từ ngày ký; nếu ngân hàng yêu cầu thời hạn dài hơn thì nhân viên phải xin cấp lại. Nếu ngân hàng cần xác "
+         "nhận trực tiếp qua điện thoại, nhân viên nhắn trước cho phòng Nhân sự tên và số điện thoại của cán bộ ngân "
+         "hàng để phòng Nhân sự chủ động trả lời, tránh việc ngân hàng gọi vào các số máy lẻ khác. Giấy xác nhận chỉ "
+         "cấp cho nhân viên đã ký HĐLĐ chính thức và không có vụ vi phạm kỷ luật đang trong thời gian xem xét. Với "
+         "mục đích thuê nhà, xin visa hoặc làm thủ tục cho con đi học, nhân viên dùng cùng mẫu NS-05 nhưng ghi rõ mục "
+         "đích tương ứng, và không cần ghi mức lương trừ khi nơi nhận yêu cầu bằng văn bản. Mỗi nhân viên được cấp "
+         "miễn phí hai bản gốc trong một năm; từ bản gốc thứ ba trở đi, nhân viên nộp phí 30.000 đồng mỗi bản cho bộ "
+         "phận Hành chính. Bản scan gửi qua email không giới hạn số lần và không thu phí.", "Nhân sự"],
         [5, "Hành chính", "Gửi xe máy ở đâu và mất bao nhiêu tiền?",
          "Nhân viên gửi xe tại hầm B1 của tòa nhà, phí 120.000 đồng mỗi tháng, công ty hỗ trợ một nửa.", "Hành chính"],
         [6, "Hành chính", "Muốn đặt thêm văn phòng phẩm thì làm sao?",

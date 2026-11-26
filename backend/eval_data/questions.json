@@ -91,7 +91,7 @@
   ]
  },
  {
-  "question": "quên chấm công thì phải báo ai",
+  "question": "hôm qua tôi không ghi nhận được giờ vào làm, giờ báo cho ai",
   "group": "dien-dat-khac",
   "expect": [
    {
@@ -135,7 +135,27 @@
   ]
  },
  {
-  "question": "quên thẻ ra vào thì làm sao",
+  "question": "tôi làm hỏng máy tính công ty thì phải đền bao nhiêu",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "noi-quy-lao-dong.docx",
+    "section": "Điều 12. Quản lý và sử dụng tài sản công ty"
+   }
+  ]
+ },
+ {
+  "question": "chi vặt không có hóa đơn thì mỗi tháng được thanh toán tối đa bao nhiêu",
+  "group": "dien-dat-khac",
+  "expect": [
+   {
+    "filename": "quy-trinh-thanh-toan.pdf",
+    "page": 4
+   }
+  ]
+ },
+ {
+  "question": "sáng nay để thẻ nhân viên ở nhà, làm sao vào được tòa nhà",
   "group": "dien-dat-khac",
   "expect": [
    {
@@ -311,7 +331,7 @@
   ]
  },
  {
-  "question": "xin giấy xác nhận đang làm việc để vay ngân hàng mất mấy ngày",
+  "question": "xin giấy xác nhận làm việc lần thứ ba trong năm có phải trả phí không",
   "group": "bang",
   "expect": [
    {
