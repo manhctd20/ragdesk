@@ -17,7 +17,7 @@ LIMIT_PARAM = {"claude": "max_tokens", "openai": "max_completion_tokens", "gemin
 MAX_OUTPUT = 4000
 NOT_FOUND = "Không tìm thấy trong tài liệu"
 SYSTEM = (
-    "Chỉ trả lời dựa trên các nguồn đánh số [1]…[5] được cung cấp. "
+    "Chỉ trả lời dựa trên các nguồn đánh số [1], [2]… được cung cấp. "
     "Trích số nguồn trong ngoặc vuông sau mỗi ý. "
     f'Nếu nguồn không có thông tin, trả lời "{NOT_FOUND}". '
     "Trả lời bằng ngôn ngữ của câu hỏi. "

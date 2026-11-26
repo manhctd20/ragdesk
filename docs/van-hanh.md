@@ -6,8 +6,8 @@ Cấu hình, chạy máy chủ, dữ liệu, sao lưu và đo chất lượng t�
 
 - **Python 3.12.**
 - **Node ≥ 22.12** để chạy test frontend. Chỉ build thì Node ≥ 20.19 là đủ.
-- **Internet ở lần chạy đầu:** `pip`, `npm`, và tải model embedding khoảng 500 MB từ Hugging Face. Sau đó tìm kiếm chạy offline, trừ chế độ AI ngoài và font Google Fonts.
-- Không cần GPU.
+- **Internet ở lần chạy đầu:** `pip`, `npm`, và tải hai model (tìm kiếm và chấm lại) khoảng 1,1 GB từ Hugging Face. Sau đó tìm kiếm chạy offline, trừ chế độ AI ngoài và font Google Fonts.
+- Không cần GPU. RAM: model chấm lại chiếm thêm khoảng 470 MB so với trước.
 
 ## Chạy
 
@@ -25,7 +25,7 @@ ANONYMIZED_TELEMETRY=False \
 Mở `http://<địa chỉ máy chủ>:8000/`.
 
 - `--host 0.0.0.0` cho cả mạng LAN vào được. Chỉ thử trên máy mình thì dùng `--host 127.0.0.1`.
-- **Lần đầu khởi động sẽ chậm** vì phải tải model embedding.
+- **Lần đầu khởi động sẽ chậm** vì phải tải model. Tải model lỗi (ví dụ không có mạng) thì máy chủ dừng, không chạy tiếp.
 - **Nên đặt `FASTEMBED_CACHE_PATH`.** Không đặt thì model nằm trong `/tmp/fastembed_cache` và mất sau mỗi lần khởi động lại máy, nên lần chạy sau lại phải tải lại.
 - **`DATA_DIR` tính theo thư mục đang đứng.** Chạy từ `backend/` thì phải để `../data`. Để mặc định `./data` thì dữ liệu sẽ nằm trong `backend/data`.
 
@@ -52,7 +52,9 @@ Khai một, hai hoặc cả ba nhà đều được. Thứ tự nhà luôn là C
 | `DATA_DIR` | | `./data` | Nơi lưu file gốc, SQLite và index |
 | `MAX_UPLOAD_MB` | | `20` | Cỡ tối đa mỗi file |
 | `MIN_RELEVANCE` | | `0.81` | Ngưỡng cosine "không liên quan": đoạn vector tốt nhất thấp hơn thì không gọi AI trả lời, giao diện hiện "Không tìm thấy đoạn nào đủ liên quan" (cách chọn: [báo cáo](bao-cao-chat-luong-tim-kiem.md), mục 2). Nâng lên thì chặn nhiều hơn nhưng dễ giấu nhầm câu có đáp án; hạ xuống thì ngược lại |
-| `FASTEMBED_CACHE_PATH` | | `/tmp/fastembed_cache` | Nơi lưu model embedding. Nên đặt ra ngoài `/tmp` |
+| `RERANK_MODEL` | | `BAAI/bge-reranker-v2-m3-int8` | Model chấm lại đoạn (tên model `TextCrossEncoder` của FastEmbed). Đặt `off` để tắt bước chấm lại: mỗi câu lại ra đủ 5 đoạn như trước, nhanh hơn khoảng 0,6 giây và không tốn RAM cho model này |
+| `RERANK_MIN` | | `-5.0` | Đoạn có điểm chấm lại thấp hơn bị bỏ (cách chọn: [báo cáo](bao-cao-chat-luong-tim-kiem.md), mục 7). Mỗi model có thang điểm riêng: **đổi `RERANK_MODEL` thì phải đo lại ngưỡng này** bằng `eval.py --corpus --rerank-min <số>` |
+| `FASTEMBED_CACHE_PATH` | | `/tmp/fastembed_cache` | Nơi lưu các model (tìm kiếm và chấm lại). Nên đặt ra ngoài `/tmp` |
 | `ANONYMIZED_TELEMETRY` | | | Đặt `False` để Chroma không gửi telemetry |
 
 Chỉ khai key mà thiếu tên model (hoặc ngược lại) thì nhà đó coi như chưa khai. Không có nhà nào khai đủ thì công tắc AI ngoài bị khoá dù `ALLOW_EXTERNAL=true`.
@@ -77,7 +79,7 @@ data/
   app.sqlite3          danh sách tài liệu, trạng thái
   chroma/              vector, chữ và metadata của các đoạn
   files/<thư mục>/     file gốc
-  models/              model embedding (nếu đặt FASTEMBED_CACHE_PATH như trên)
+  models/              model tìm kiếm và chấm lại (nếu đặt FASTEMBED_CACHE_PATH như trên)
 ```
 
 **Sao lưu:** tắt máy chủ rồi chép cả `DATA_DIR`. Không chép lúc máy chủ đang chạy, vì dữ liệu có thể đang được ghi dở.

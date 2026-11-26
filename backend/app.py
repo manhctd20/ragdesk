@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 import llm
 import store
 from ask import MIN_RELEVANCE, ask_events
+from rerank import DEFAULT_MODEL, RERANK_MIN, Reranker, rerank
 from search import Bm25Holder, Embedder, Index, retrieve
 from worker import Worker
 
@@ -59,14 +60,17 @@ def sse_stream(events: Iterator[tuple[str, dict]]) -> Iterator[str]:
         events.close()  # client disconnect: propagate to the upstream LLM stream
 
 
-def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_answer=llm.stream_answer,
-               rewrite=llm.rewrite, frontend_dir: Path = DIST) -> FastAPI:
+def create_app(env: Mapping[str, str] | None = None, *, embedder=None, reranker=None,
+               stream_answer=llm.stream_answer, rewrite=llm.rewrite, frontend_dir: Path = DIST) -> FastAPI:
     env = os.environ if env is None else env
     password = env.get("ADMIN_PASSWORD") or ""
     max_mb = int(env.get("MAX_UPLOAD_MB") or 20)
     allow_external = (env.get("ALLOW_EXTERNAL") or "").lower() == "true"
     data_dir = Path(env.get("DATA_DIR") or "./data")
     min_relevance = float(env.get("MIN_RELEVANCE") or MIN_RELEVANCE)
+    rerank_model = env.get("RERANK_MODEL") or DEFAULT_MODEL
+    rerank_on = rerank_model.lower() != "off"
+    rerank_min = float(env.get("RERANK_MIN") or RERANK_MIN)
     configured = llm.providers(env)
 
     @asynccontextmanager
@@ -84,6 +88,7 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
         worker.start()
         app.state.worker, app.state.index, app.state.bm25, app.state.files_root = worker, index, bm25, files_root
         app.state.embedder = worker.embedder
+        app.state.reranker = (reranker or Reranker(rerank_model)) if rerank_on else None
         yield
 
     app = FastAPI(lifespan=lifespan)
@@ -170,6 +175,7 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
             body.question, body.mode, provider, [t.model_dump() for t in body.history],
             find=lambda query, highlight: retrieve(query, s.embedder, s.index, s.bm25, highlight=highlight),
             stream_answer=stream_answer, rewrite=rewrite, env=env, min_relevance=min_relevance,
+            rerank=(lambda query, hits: rerank(query, hits, s.reranker, rerank_min)) if s.reranker else None,
         )
         return provider, events
 

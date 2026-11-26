@@ -43,6 +43,16 @@ class FakeEmbedder:
         return [1.0] + [0.0] * (DIM - 1)
 
 
+class FakeReranker:
+    def __init__(self, scores):
+        self.scores, self.calls, self.last_texts = scores, 0, []
+
+    def score(self, query, texts):
+        self.calls += 1
+        self.last_texts = texts
+        return self.scores[:len(texts)]
+
+
 class FakeLLM:
     def __init__(self, deltas=("Trả lời [1]",), exc=None, rewritten="câu viết lại"):
         self.deltas = list(deltas)
@@ -108,7 +118,7 @@ def files(data):
 @pytest.fixture
 def make_env(data):
     def _make(**extra):
-        return {"ADMIN_PASSWORD": PW, "DATA_DIR": str(data), "MAX_UPLOAD_MB": "1", **extra}
+        return {"ADMIN_PASSWORD": PW, "DATA_DIR": str(data), "MAX_UPLOAD_MB": "1", "RERANK_MODEL": "off", **extra}
     return _make
 
 
@@ -116,11 +126,12 @@ def make_env(data):
 def open_client(tmp_path, make_env):
     stack = ExitStack()
 
-    def _open(env=None, llm=None, frontend_dir=None):
+    def _open(env=None, llm=None, frontend_dir=None, reranker=None):
         llm = llm if llm is not None else FakeLLM()
         application = create_app(
             env if env is not None else make_env(),
             embedder=FakeEmbedder(),
+            reranker=reranker,
             stream_answer=llm.stream_answer,
             rewrite=llm.rewrite,
             frontend_dir=frontend_dir if frontend_dir is not None else tmp_path / "dist",
@@ -891,3 +902,21 @@ def test_delete_during_pending_reindex_via_api(open_client, files, tmp_path):
     assert [r["id"] for r in store.list()] == [busy] and store.list_indexing() == []
     assert regular_files(files) == [files / FOLDER / "ban.xlsx"]
     assert source_doc_ids(ask(c)) == {busy}
+
+
+def test_rerank_off_keeps_all_sources(open_client, make_env, tmp_path):
+    r = FakeReranker([-99.0] * 5)
+    c = open_client(make_env(), reranker=r)  # make_env sets RERANK_MODEL=off
+    upload_ready(c, tmp_path, rows=3)
+    body = ask(c).json()
+    assert r.calls == 0 and body["sources"] and all("rerank_score" not in s for s in body["sources"])
+    assert body["low_relevance"] is False
+
+
+def test_app_reranks_with_env_min(open_client, make_env, tmp_path):
+    r = FakeReranker([1.0, -3.0, 1.0, 1.0, 1.0])
+    c = open_client(make_env(RERANK_MODEL="", RERANK_MIN="0"), reranker=r)
+    upload_ready(c, tmp_path, rows=3)
+    body = ask(c).json()
+    assert r.calls == 1 and len(body["sources"]) == len(r.last_texts) - 1
+    assert all(s["rerank_score"] >= 0 for s in body["sources"]) and body["low_relevance"] is False

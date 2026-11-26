@@ -13,7 +13,7 @@ Hỏi–đáp trên tài liệu nội bộ của team, chạy trong mạng LAN. 
 ## Tính năng chính
 
 - **Nạp tài liệu** `.pdf`, `.docx`, `.xlsx` (tối đa 20 MB mỗi file), xếp theo thư mục. Tải lên trùng tên là thay file.
-- **Tìm theo nghĩa và theo từ khoá**, trả về 5 đoạn tốt nhất, tô màu từ khớp, ghi rõ trang / mục / dòng Excel.
+- **Tìm theo nghĩa và theo từ khoá**, chấm lại từng đoạn rồi trả về tối đa 5 đoạn trả lời được câu hỏi, tô màu từ khớp, ghi rõ trang / mục / dòng Excel.
 - **Chỉ nội bộ** (mặc định): không gọi AI nào, tài liệu không rời máy chủ.
 - **AI ngoài** (khi quản trị cho phép): câu trả lời hiện dần, có số trích dẫn `[1]`.
 - **Hỏi nối tiếp** trong cùng một cuộc hỏi, kiểu "thế ai duyệt?".
@@ -23,7 +23,7 @@ Chi tiết: [docs/tinh-nang.md](docs/tinh-nang.md).
 
 ## Cài đặt và chạy
 
-Cần **Python 3.12** và **Node ≥ 20.19**. Lần chạy đầu cần internet để tải thư viện và model (khoảng 500 MB). Không cần GPU.
+Cần **Python 3.12** và **Node ≥ 20.19**. Lần chạy đầu cần internet để tải thư viện và model (khoảng 1,1 GB). Không cần GPU.
 
 ```bash
 cd backend

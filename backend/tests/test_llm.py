@@ -220,3 +220,7 @@ def test_system_forbids_markdown():
     assert NOT_FOUND in SYSTEM
     assert "[1]" in SYSTEM
     assert build_messages(QUESTION, five_chunks())[0]["content"] == SYSTEM
+
+
+def test_system_prompt_has_no_fixed_source_count():
+    assert "[5]" not in SYSTEM

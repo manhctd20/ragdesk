@@ -4,6 +4,7 @@ from ask import HISTORY_TURNS, ask_events
 
 NO_DOCS = "Chưa có tài liệu nào"
 CHUNKS = [{"id": "A:0", "text": "Giám đốc duyệt nghỉ phép", "meta": {}, "score": 0.1, "matched": []}]
+C3 = [{"id": f"A:{i}", "text": f"đoạn {i}", "meta": {}, "score": 0.1, "matched": []} for i in range(3)]
 
 
 def turn(question, mode="external", provider="claude", answer="trả lời"):
@@ -11,14 +12,18 @@ def turn(question, mode="external", provider="claude", answer="trả lời"):
 
 
 class Fakes:
-    def __init__(self, chunks=CHUNKS, rewritten="Câu viết lại?", deltas=("Cần ", "duyệt [1]."), fail_after=None, rewrite_exc=None, top=0.9):
-        self.chunks, self.rewritten, self.deltas, self.top = chunks, rewritten, deltas, top
+    def __init__(self, chunks=CHUNKS, rewritten="Câu viết lại?", deltas=("Cần ", "duyệt [1]."), fail_after=None, rewrite_exc=None, top=0.9, kept=None):
+        self.chunks, self.rewritten, self.deltas, self.top, self.kept = chunks, rewritten, deltas, top, kept
         self.fail_after, self.rewrite_exc = fail_after, rewrite_exc
-        self.find_calls, self.rewrite_calls, self.stream_calls = [], [], []
+        self.find_calls, self.rewrite_calls, self.stream_calls, self.rerank_calls = [], [], [], []
 
     def find(self, query, highlight):
         self.find_calls.append((query, highlight))
         return self.chunks, self.top
+
+    def rerank(self, query, chunks):
+        self.rerank_calls.append((query, chunks))
+        return chunks if self.kept is None else self.kept
 
     def rewrite(self, question, turns, provider, env):
         self.rewrite_calls.append((question, turns, provider, env))
@@ -38,7 +43,7 @@ def run(fakes, question="thế ai duyệt?", mode="external", provider="claude",
         ask_events(
             question, mode, provider, list(history),
             find=fakes.find, stream_answer=fakes.stream_answer, rewrite=fakes.rewrite, env={"K": "v"},
-            min_relevance=min_relevance,
+            min_relevance=min_relevance, rerank=fakes.rerank,
         )
     )
 
@@ -179,3 +184,36 @@ def test_no_documents_is_not_low_relevance():
     f = Fakes(chunks=[], top=None)
     meta = run(f)[0][1]
     assert meta["low_relevance"] is False and meta["message"] == NO_DOCS
+
+
+def test_rerank_keeps_subset_and_llm_gets_only_kept():
+    f = Fakes(chunks=C3, kept=[C3[1]])
+    events = run(f)
+    assert events[0][1]["sources"] == [C3[1]] and events[0][1]["low_relevance"] is False
+    assert f.stream_calls[0][1] == [C3[1]]
+
+
+def test_rerank_cuts_all_marks_low_and_keeps_original_sources():
+    f = Fakes(chunks=C3, kept=[])
+    events = run(f)
+    assert names(events) == ["meta", "done"]
+    assert events[0][1]["sources"] == C3 and events[0][1]["low_relevance"] is True
+    assert f.stream_calls == []
+
+
+def test_rerank_not_called_when_cosine_low():
+    f = Fakes(top=0.3)
+    run(f, min_relevance=0.5)
+    assert f.rerank_calls == []
+
+
+def test_rerank_not_called_without_docs():
+    f = Fakes(chunks=[])
+    run(f)
+    assert f.rerank_calls == []
+
+
+def test_rerank_receives_search_query():
+    f = Fakes()
+    run(f, history=[turn("nghỉ phép năm")])  # external + history: rewrite gives "Câu viết lại?"
+    assert f.rerank_calls[0][0] == "Câu viết lại?"

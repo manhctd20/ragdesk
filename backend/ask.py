@@ -15,6 +15,25 @@ def is_low_relevance(top_similarity: float | None, min_relevance: float) -> bool
     return top_similarity is not None and top_similarity < min_relevance
 
 
+def select_sources(
+    query: str,
+    chunks: list[dict],
+    top_similarity: float | None,
+    min_relevance: float,
+    rerank: Callable[[str, list[dict]], list[dict]] | None,
+) -> tuple[list[dict], bool]:
+    """(sources to show, low_relevance). Shared by the ask pipeline and eval.py.
+    When nothing is relevant enough the original chunks are kept so the UI can still show the nearest ones."""
+    if not chunks:
+        return [], False
+    if is_low_relevance(top_similarity, min_relevance):
+        return chunks, True
+    if rerank is None:
+        return chunks, False
+    kept = rerank(query, chunks)
+    return (kept, False) if kept else (chunks, True)
+
+
 def external_turns(history: list[dict], provider: str) -> list[dict]:
     return [
         {"question": t["question"], "answer": t["answer"]}
@@ -38,6 +57,7 @@ def ask_events(
     rewrite: Callable,
     env: Mapping[str, str],
     min_relevance: float,
+    rerank: Callable[[str, list[dict]], list[dict]] | None = None,
 ) -> Iterator[tuple[str, dict]]:
     history = history[-HISTORY_TURNS:]
     query = question
@@ -52,13 +72,13 @@ def ask_events(
         if rewritten:
             question = query = rewritten
     chunks, top = find(query, question)
-    low = bool(chunks) and is_low_relevance(top, min_relevance)
-    yield "meta", {"sources": chunks, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào",
+    sources, low = select_sources(query, chunks, top, min_relevance, rerank)
+    yield "meta", {"sources": sources, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào",
                    "low_relevance": low}
-    if chunks and not low and provider is not None:
+    if sources and not low and provider is not None:
         try:
             got_text = False
-            with closing(stream_answer(question, chunks, provider, env)) as stream:
+            with closing(stream_answer(question, sources, provider, env)) as stream:
                 for text in stream:
                     got_text = got_text or bool(text)
                     yield "delta", {"text": text}
