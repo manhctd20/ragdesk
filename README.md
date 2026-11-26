@@ -27,11 +27,15 @@ Chi tiết: [docs/tinh-nang.md](docs/tinh-nang.md).
 
 ```mermaid
 flowchart LR
-  U["Tải file lên<br>PDF, Word, Excel"] --> R["Đọc chữ, cắt đoạn<br>khoảng 800 ký tự,<br>mỗi dòng bảng một đoạn"]
-  R --> E["Tạo vector<br>multilingual-e5-small"]
-  E --> DB[("Chroma<br>vector và chữ")]
+  U["Tải file lên<br>PDF, Word, Excel"] --> R["Chia file thành<br>các đoạn nhỏ"]
+  R --> E["Đổi mỗi đoạn thành vector<br>(dãy số thể hiện nghĩa)"]
+  E --> DB[("Kho vector<br>Chroma")]
   R --> K[("Chỉ mục từ khoá<br>BM25")]
 ```
+
+- **Vì sao chia nhỏ:** khi hỏi, hệ thống trả về đúng đoạn chứa câu trả lời chứ không phải cả file.
+- **Cách chia:** chữ trong PDF và Word cắt khoảng 800 ký tự một đoạn, hai đoạn liền nhau trùng một phần để không đứt câu. Bảng (Word và Excel) thì mỗi dòng là một đoạn, ghi kèm tên cột (ví dụ `Bậc: 3; Hệ số: 2,34`), để hỏi "hệ số lương bậc 3" ra đúng dòng đó.
+- **Hai cách tìm:** vector giúp tìm theo nghĩa, hỏi bằng chữ khác với tài liệu vẫn ra; chỉ mục từ khoá giúp tìm đúng chữ, số, mã hiệu.
 
 **Hỏi** (mỗi câu hỏi):
 
