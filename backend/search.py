@@ -72,16 +72,39 @@ class Index:
         return self.collection.count()
 
 
-def tokenize(text: str) -> list[str]:
-    return re.findall(r"\w+", unicodedata.normalize("NFC", text).lower())
+# Defaults are set from the measurements in docs/bao-cao-chat-luong-tim-kiem.md, section 1.
+BIGRAMS = True
+UNACCENT = True
+
+
+def unaccent(text: str) -> str:
+    stripped = "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
+    return unicodedata.normalize("NFC", stripped).replace("đ", "d").replace("Đ", "D")
+
+
+def tokenize(text: str, *, bigrams: bool = BIGRAMS, unaccent_tokens: bool = UNACCENT) -> list[str]:
+    tokens = re.findall(r"\w+", unicodedata.normalize("NFC", text).lower())
+    if bigrams:
+        tokens += [f"{a}_{b}" for a, b in zip(tokens, tokens[1:])]
+    if unaccent_tokens:
+        tokens += [u for u in map(unaccent, tokens) if u not in tokens]
+    return tokens
+
+
+def _syllables(text: str) -> list[str]:
+    return tokenize(text, bigrams=False, unaccent_tokens=False)
 
 
 class Bm25Holder:
-    def __init__(self):
+    def __init__(self, bigrams: bool = BIGRAMS, unaccent_tokens: bool = UNACCENT):
+        self.bigrams, self.unaccent_tokens = bigrams, unaccent_tokens
         self.current: tuple[BM25Okapi | None, list[str], frozenset[str]] = (None, [], frozenset())
 
+    def tokenize(self, text: str) -> list[str]:
+        return tokenize(text, bigrams=self.bigrams, unaccent_tokens=self.unaccent_tokens)
+
     def rebuild(self, ids: list[str], texts: list[str]) -> None:
-        bm = BM25Okapi([tokenize(t) for t in texts]) if texts else None
+        bm = BM25Okapi([self.tokenize(t) for t in texts]) if texts else None
         self.current = (bm, ids, frozenset(i.rsplit(":", 1)[0] for i in ids))
 
 
@@ -105,13 +128,14 @@ def search(question: str, embedder, index: Index, bm25: Bm25Holder, top: int = 5
     bm, ids, doc_ids = bm25.current
     if not doc_ids or index.count() == 0:
         return []
-    tokens = tokenize(question)
+    tokens = bm25.tokenize(question)
     ranked = rrf(index.dense(embedder.embed_query(question), doc_ids, 20), bm25_rank(bm, ids, tokens, 20))[:top]
     scores = dict(ranked)
-    shown = tokenize(highlight or question)
+    shown = _syllables(highlight or question)
     results = []
     for hit in index.get([cid for cid, _ in ranked]):
-        present = set(tokenize(hit["text"]))
-        matched = list(dict.fromkeys(t for t in shown if t in present))
+        # accented syllables of the chunk whose unaccented form matches a shown one (so "nghi" highlights "nghỉ")
+        words = list(dict.fromkeys(_syllables(hit["text"])))
+        matched = [w for p in dict.fromkeys(map(unaccent, shown)) for w in words if unaccent(w) == p]
         results.append({**hit, "score": scores[hit["id"]], "matched": matched})
     return results

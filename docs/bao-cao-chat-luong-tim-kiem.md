@@ -50,3 +50,54 @@ cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus
 ### Quyết định
 
 Đây là mốc gốc, chưa có thay đổi nào để giữ hay bỏ. Các task sau so với `vitri@5` = 27/35, MRR = 0,73.
+
+## 1. Tách từ
+
+Thay đổi: `tokenize` thêm cặp tiếng liền nhau (`nghỉ_phép`) và bản bỏ dấu của mọi token (`nghi`, `nghi_phep`; `đ` thành `d`). Câu hỏi và chỉ mục BM25 dùng chung một cách tách (`Bm25Holder.tokenize`). `matched` vẫn là các tiếng có dấu nằm trong chữ của đoạn, không gồm cặp tiếng; gõ "nghi phep" vẫn tô đúng "nghỉ phép". Hai phần bật/tắt riêng được bằng `--no-bigrams` và `--no-unaccent`.
+
+Lệnh đã chạy (bốn tổ hợp, cùng bộ mẫu như mục 0):
+
+```
+cd backend
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --no-bigrams
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --no-unaccent
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --no-bigrams --no-unaccent
+```
+
+### Tổng (35 câu có đáp án)
+
+| Tổ hợp | vitri@5 | MRR | file@1 | file@5 |
+|---|---|---|---|---|
+| Trước (mục 0) = tắt cả hai | 0,77 (27/35) | 0,73 | 0,89 | 0,91 |
+| Cặp tiếng + bỏ dấu (mặc định mới) | **0,86 (30/35)** | **0,77** | 0,94 | 1,00 |
+| Chỉ bỏ dấu (`--no-bigrams`) | 0,86 (30/35) | 0,75 | 0,91 | 1,00 |
+| Chỉ cặp tiếng (`--no-unaccent`) | 0,77 (27/35) | 0,73 | 0,89 | 0,91 |
+| Tắt cả hai | 0,77 (27/35) | 0,73 | 0,89 | 0,91 |
+
+Tắt cả hai cho đúng số của mục 0, nên cách tách cũ không bị đổi hành vi khi tắt cờ.
+
+### Theo nhóm, vitri@5 (MRR trong ngoặc)
+
+| Nhóm | Số câu | Trước | Cặp tiếng + bỏ dấu | Chỉ bỏ dấu | Chỉ cặp tiếng |
+|---|---|---|---|---|---|
+| dung-chu | 7 | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) |
+| dien-dat-khac | 9 | 1,00 (0,91) | 1,00 (0,91) | 1,00 (0,86) | 1,00 (0,91) |
+| tu-ghep-viet-tat | 6 | 0,83 (0,71) | 0,83 (0,71) | 0,83 (0,71) | 0,83 (0,75) |
+| khong-dau | 4 | 0,00 (0,00) | **0,75 (0,36)** | 0,75 (0,36) | 0,00 (0,00) |
+| bang | 6 | 0,50 (0,50) | 0,50 (0,50) | 0,50 (0,50) | 0,50 (0,50) |
+| hai-cot | 3 | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) |
+
+Thời gian nạp 2,0 đến 3,2 giây, tìm mỗi câu trung vị 0,013 đến 0,015 giây: không đổi đáng kể.
+
+### Quyết định
+
+**Giữ cả hai: `BIGRAMS = True`, `UNACCENT = True`.**
+
+Lý do:
+- Điểm chính tăng 3 câu (27 lên 30), không nhóm nào mất câu nào: qua quy tắc giữ/bỏ.
+- Toàn bộ mức tăng đến từ bản bỏ dấu (nhóm `khong-dau` từ 0/4 lên 3/4). Cặp tiếng riêng lẻ không thêm câu nào trên bộ mẫu này (`--no-unaccent` bằng mốc gốc).
+- Khi hai phần cùng bật và chỉ bỏ dấu bằng nhau ở 30/35, MRR phân xử: 0,77 so với 0,75, nên giữ cặp tiếng. Chênh lệch nhỏ (một câu `dien-dat-khac` lên hạng 1), nên đây là bằng chứng yếu cho cặp tiếng; chi phí chỉ là chỉ mục BM25 to hơn trong RAM.
+- BM25 dựng lại trong RAM khi khởi động nên không cần index lại file đã nạp.
+
+Còn trượt sau thay đổi (5 câu): 1 câu `khong-dau` ("nghi phep nam bao nhieu ngay": đúng hai file quy định nghỉ phép nhưng sai đoạn, hạng 1 đến 5 toàn đoạn khác mục 1), 4 câu hỏi vào bảng Word (thiếu `row`, chờ task đọc bảng). Câu `khong-dau` còn lại này cần xem lại sau khi có các thay đổi khác.

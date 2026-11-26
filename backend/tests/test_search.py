@@ -1,9 +1,10 @@
+import re
 import unicodedata
 
 import pytest
 
 from ingest import Chunk
-from search import Bm25Holder, Embedder, Index, bm25_rank, rrf, search, tokenize
+from search import Bm25Holder, Embedder, Index, bm25_rank, rrf, search, tokenize, unaccent
 
 DIM = 384
 
@@ -54,7 +55,7 @@ def test_rrf_scores_and_order():
 
 
 def test_tokenize_lowercase_strip_punct_keep_diacritics():
-    assert tokenize("Nghỉ phép, NĂM!") == ["nghỉ", "phép", "năm"]
+    assert tokenize("Nghỉ phép, NĂM!", bigrams=False, unaccent_tokens=False) == ["nghỉ", "phép", "năm"]
     assert tokenize("") == []
     assert tokenize("  ...!?  ") == []
 
@@ -62,7 +63,41 @@ def test_tokenize_lowercase_strip_punct_keep_diacritics():
 def test_tokenize_nfd_equals_nfc():
     s = "Nghỉ phép năm, Công tác phí"
     assert tokenize(unicodedata.normalize("NFD", s)) == tokenize(unicodedata.normalize("NFC", s))
-    assert tokenize(unicodedata.normalize("NFD", "nghỉ")) == ["nghỉ"]
+    assert tokenize(unicodedata.normalize("NFD", "nghỉ"), bigrams=False, unaccent_tokens=False) == ["nghỉ"]
+
+
+def test_tokenize_bigrams_and_unaccent():
+    toks = tokenize("Nghỉ phép năm", bigrams=True, unaccent_tokens=True)
+    for t in ("nghỉ", "phép", "năm", "nghỉ_phép", "phép_năm", "nghi", "phep", "nghi_phep"):
+        assert t in toks
+    assert len(toks) == len(set(toks))
+
+
+def test_unaccent_d():
+    assert unaccent("Đề nghị") == "De nghi"
+    assert unaccent("đường") == "duong"
+
+
+def test_tokenize_punctuation_only():
+    assert tokenize("?", bigrams=True, unaccent_tokens=True) == []
+    assert tokenize("...", bigrams=True, unaccent_tokens=True) == []
+
+
+def test_tokenize_single_syllable():
+    assert tokenize("nghỉ", bigrams=True, unaccent_tokens=False) == ["nghỉ"]
+    assert tokenize("vpn", bigrams=True, unaccent_tokens=True) == ["vpn"]
+
+
+def test_tokenize_flags_off():
+    s = "Nghỉ phép, NĂM! Đề nghị"
+    assert tokenize(s, bigrams=False, unaccent_tokens=False) == re.findall(
+        r"\w+", unicodedata.normalize("NFC", s).lower()
+    )
+
+
+def test_bm25_holder_tokenize_uses_its_options():
+    assert Bm25Holder(bigrams=False, unaccent_tokens=False).tokenize("Nghỉ phép") == ["nghỉ", "phép"]
+    assert "nghi_phep" in Bm25Holder(bigrams=True, unaccent_tokens=True).tokenize("Nghỉ phép")
 
 
 def test_bm25_holder_empty_and_rebuild():
@@ -232,3 +267,13 @@ def test_highlight_limits_matched(index):
     res = search("nghỉ phép năm ai duyệt", FixedEmbedder(), index, holder, highlight="ngày")
     assert res[0]["id"] == "A:0"
     assert res[0]["matched"] == ["ngày"]
+
+
+@pytest.mark.parametrize("question", ["nghi phep", "nghỉ phep"])
+def test_search_unaccented_query_matches_and_highlights_accented(index, question):
+    holder = Bm25Holder(bigrams=True, unaccent_tokens=True)
+    add_doc(index, "A", ["Kết nối VPN công ty", "Nhân viên được nghỉ phép 12 ngày", "Quy trình mua sắm"])
+    rebuild(holder, index)
+    res = search(question, FixedEmbedder(), index, holder, top=1)
+    assert res[0]["id"] == "A:1"
+    assert res[0]["matched"] == ["nghỉ", "phép"]

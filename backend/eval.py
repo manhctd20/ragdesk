@@ -89,7 +89,8 @@ def summarize(rows: list[dict]) -> dict[str, dict]:
 def run_corpus(questions: list[dict], corpus_dir: Path, options: dict) -> tuple[list[dict], float]:
     """Index every corpus file into a throwaway DATA_DIR, then search each question."""
     corpus_dir = Path(corpus_dir)
-    embedder, bm25 = Embedder(), Bm25Holder()
+    embedder = Embedder()
+    bm25 = Bm25Holder(**{k: v for k, v in options.items() if k in ("bigrams", "unaccent_tokens")})
     with tempfile.TemporaryDirectory() as tmp:
         index = Index(Path(tmp) / "chroma")
         t0 = time.perf_counter()
@@ -149,7 +150,8 @@ def main(argv: list[str]) -> int:
     root = Path(__file__).parent / "eval_data"
     if argv[1] == "--corpus":
         questions = json.loads((root / "questions.json").read_text(encoding="utf-8"))
-        rows, secs = run_corpus(questions, root / "corpus", {})
+        options = {k: False for flag, k in (("--no-bigrams", "bigrams"), ("--no-unaccent", "unaccent_tokens")) if flag in argv}
+        rows, secs = run_corpus(questions, root / "corpus", options)
         print(f"Thời gian nạp: {secs:.1f}s")
     else:
         rows = run_data_dir(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
