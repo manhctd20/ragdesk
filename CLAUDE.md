@@ -1,6 +1,6 @@
 # ragdesk
 
-Hệ thống hỏi–đáp tài liệu nội bộ (RAG) cho team. **Đợt 1, 2A và đợt chất lượng tìm kiếm đã xong (trên `main`); 2C tạm dừng. Cách chạy xem `README.md`, lộ trình xem `docs/lo-trinh.md`.**
+Hệ thống hỏi–đáp tài liệu nội bộ (RAG) cho team. **Đợt 1, 2A, đợt chất lượng tìm kiếm và đợt chấm lại đoạn (reranker) đã xong (trên `main`); 2C tạm dừng. Cách chạy xem `README.md`, lộ trình xem `docs/lo-trinh.md`.**
 
 - Thiết kế đã duyệt: `docs/2026-11-20-thiet-ke.md`. Kế hoạch đã duyệt: `docs/2026-11-20-ke-hoach.md`. Việc ngoài các đợt đã duyệt thì hỏi người dùng trước.
 - Bối cảnh và lý do các quyết định: `docs/2026-11-20-ban-giao-brainstorm.md`.

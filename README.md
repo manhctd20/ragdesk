@@ -21,6 +21,38 @@ Hỏi–đáp trên tài liệu nội bộ của team, chạy trong mạng LAN. 
 
 Chi tiết: [docs/tinh-nang.md](docs/tinh-nang.md).
 
+## Luồng hoạt động
+
+**Nạp tài liệu** (quản trị tải file lên, máy chủ xử lý ở nền):
+
+```mermaid
+flowchart LR
+  U["Tải file lên<br>PDF, Word, Excel"] --> R["Đọc chữ, cắt đoạn<br>khoảng 800 ký tự,<br>mỗi dòng bảng một đoạn"]
+  R --> E["Tạo vector<br>multilingual-e5-small"]
+  E --> DB[("Chroma<br>vector và chữ")]
+  R --> K[("Chỉ mục từ khoá<br>BM25")]
+```
+
+**Hỏi** (mỗi câu hỏi):
+
+```mermaid
+flowchart TD
+  Q["Câu hỏi"] --> S["Tìm theo nghĩa và theo từ khoá,<br>trộn lại lấy 5 đoạn"]
+  S --> G{"Đoạn giống nhất<br>đủ gần câu hỏi?"}
+  G -- không --> NF["Không tìm thấy<br>vẫn mở xem được 5 đoạn gần nhất"]
+  G -- có --> RR{"Chấm lại từng đoạn:<br>còn đoạn trả lời được?"}
+  RR -- không --> NF
+  RR -- có --> M{"Chế độ"}
+  M -- Chỉ nội bộ --> SH["Hiện 1 đến 5 đoạn<br>kèm tên file, trang, mục, dòng"]
+  M -- AI ngoài --> AI["Gửi câu hỏi và các đoạn đó<br>cho Claude, OpenAI hoặc Gemini"]
+  AI --> ANS["Câu trả lời hiện dần,<br>có số trích dẫn"]
+```
+
+- Mọi bước tìm và chấm chạy trên máy chủ bằng CPU. Chỉ nhánh **AI ngoài** gửi dữ liệu ra ngoài: câu hỏi và các đoạn đã chọn, không bao giờ gửi cả file.
+- Câu gõ không dấu bỏ qua bước chấm lại (model chấm sai câu không dấu), nên vẫn ra đủ 5 đoạn.
+- Hỏi nối tiếp: chế độ nội bộ ghép câu trước vào khi tìm; AI ngoài nhờ AI viết lại thành câu đủ nghĩa rồi mới tìm.
+- Hai ngưỡng (`MIN_RELEVANCE`, `RERANK_MIN`) chỉnh được bằng biến môi trường, xem [docs/van-hanh.md](docs/van-hanh.md).
+
 ## Cài đặt và chạy
 
 Cần **Python 3.12** và **Node ≥ 20.19**. Lần chạy đầu cần internet để tải thư viện và model (khoảng 1,1 GB). Không cần GPU.
