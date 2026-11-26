@@ -9,7 +9,8 @@ import unicodedata
 from pathlib import Path
 
 from ingest import Chunk, ingest
-from ask import MIN_RELEVANCE, is_low_relevance
+from ask import MIN_RELEVANCE, is_low_relevance, select_sources
+from rerank import DEFAULT_MODEL, RERANK_MIN, Reranker, rerank
 from search import Bm25Holder, Embedder, Index, retrieve
 
 TOP = 5
@@ -42,14 +43,17 @@ def normalize(item: dict) -> dict:
 
 
 def score(item: dict, hits: list[dict], seconds: float, top_similarity: float | None = None,
-          min_relevance: float = MIN_RELEVANCE) -> dict:
+          min_relevance: float = MIN_RELEVANCE, low: bool | None = None) -> dict:
+    """`low` comes from select_sources when the caller ran it; otherwise the plain cosine rule applies."""
     expect = item["expect"]
+    if low is None:
+        # same rule as ask_events: best vector cosine of the whole query vs the threshold
+        low = bool(hits) and is_low_relevance(top_similarity, min_relevance)
     return {
         "question": item["question"], "group": item["group"], "expect": expect, "where": item.get("where", ""),
         "file_rank": first_rank(expect, hits, True), "loc_rank": first_rank(expect, hits, False),
         "top_similarity": top_similarity, "has_answer": bool(expect),
-        # same rule as ask_events: best vector cosine of the whole query vs the threshold
-        "low_relevance": bool(hits) and is_low_relevance(top_similarity, min_relevance),
+        "low_relevance": low, "shown": 0 if low else len(hits),
         "seconds": seconds, "got": [h["meta"]["filename"] for h in hits],
     }
 
@@ -78,6 +82,7 @@ def summarize(rows: list[dict]) -> dict[str, dict]:
     out = {"tong": {
         **_metrics(answered),
         "chan_nham": _rate(answered, lambda r: r["low_relevance"]),
+        "so_doan_tb": statistics.mean(r["shown"] for r in answered) if answered else 0.0,
         "giay_trung_vi": statistics.median(secs) if secs else 0.0,
         "giay_p95": secs[math.ceil(0.95 * len(secs)) - 1] if secs else 0.0,
     }}
@@ -90,7 +95,15 @@ def summarize(rows: list[dict]) -> dict[str, dict]:
     return out
 
 
-def run_corpus(questions: list[dict], corpus_dir: Path, options: dict, min_relevance: float = MIN_RELEVANCE) -> tuple[list[dict], float]:
+def _search(item: dict, embedder, index: Index, bm25: Bm25Holder, min_relevance: float, rerank_fn) -> dict:
+    t = time.perf_counter()
+    hits, top_sim = retrieve(item["question"], embedder, index, bm25, top=TOP)
+    sources, low = select_sources(item["question"], hits, top_sim, min_relevance, rerank_fn)
+    return score(item, sources, time.perf_counter() - t, top_sim, min_relevance, low=low)
+
+
+def run_corpus(questions: list[dict], corpus_dir: Path, options: dict, min_relevance: float = MIN_RELEVANCE,
+               rerank=None) -> tuple[list[dict], float]:
     """Index every corpus file into a throwaway DATA_DIR, then search each question."""
     corpus_dir = Path(corpus_dir)
     embedder = Embedder()
@@ -112,26 +125,17 @@ def run_corpus(questions: list[dict], corpus_dir: Path, options: dict, min_relev
             texts += [c.text for c in chunks]
         bm25.rebuild(ids, texts)
         ingest_seconds = time.perf_counter() - t0
-        rows = []
-        for item in map(normalize, questions):
-            t = time.perf_counter()
-            hits, top_sim = retrieve(item["question"], embedder, index, bm25, top=TOP)
-            rows.append(score(item, hits, time.perf_counter() - t, top_sim, min_relevance))
+        rows = [_search(item, embedder, index, bm25, min_relevance, rerank) for item in map(normalize, questions)]
     return rows, ingest_seconds
 
 
-def run_data_dir(questions: list[dict], min_relevance: float = MIN_RELEVANCE) -> list[dict] | None:
+def run_data_dir(questions: list[dict], min_relevance: float = MIN_RELEVANCE, rerank=None) -> list[dict] | None:
     index = Index(Path(os.environ.get("DATA_DIR", "./data")) / "chroma")
     if index.count() == 0:
         return None
     embedder, bm25 = Embedder(), Bm25Holder()
     bm25.rebuild(*index.all_texts())
-    rows = []
-    for item in map(normalize, questions):
-        t = time.perf_counter()
-        hits, top_sim = retrieve(item["question"], embedder, index, bm25, top=TOP)
-        rows.append(score(item, hits, time.perf_counter() - t, top_sim, min_relevance))
-    return rows
+    return [_search(item, embedder, index, bm25, min_relevance, rerank) for item in map(normalize, questions)]
 
 
 def print_report(rows: list[dict]) -> None:
@@ -146,7 +150,8 @@ def print_report(rows: list[dict]) -> None:
     if answered:
         print(f"cosine cao nhất, câu có đáp án: thấp nhất {min(answered):.4f}"
               + (f" | câu không liên quan: cao nhất {max(unrelated):.4f}" if unrelated else ""))
-    print(f"chặn nhầm: {t['chan_nham']:.2f} | tìm: trung vị {t['giay_trung_vi']:.3f}s, p95 {t['giay_p95']:.3f}s")
+    print(f"chặn nhầm: {t['chan_nham']:.2f} | tìm: trung vị {t['giay_trung_vi']:.3f}s, p95 {t['giay_p95']:.3f}s"
+          f" | số đoạn hiện trung bình: {t['so_doan_tb']:.2f}")
     print("cosine cao nhất của từng câu (nhánh vector):")
     for r in sorted(rows, key=lambda r: (r["has_answer"], r["top_similarity"] is None, r["top_similarity"] or 0)):
         cos = "   -  " if r["top_similarity"] is None else f"{r['top_similarity']:.4f}"
@@ -165,6 +170,18 @@ def main(argv: list[str]) -> int:
         i = argv.index("--min-relevance")
         min_relevance = float(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
+    rerank_min = RERANK_MIN
+    if "--rerank-min" in argv:
+        i = argv.index("--rerank-min")
+        rerank_min = float(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
+    model = os.environ.get("RERANK_MODEL") or DEFAULT_MODEL
+    rerank_fn = None
+    if "--no-rerank" in argv:
+        argv.remove("--no-rerank")
+    elif model.lower() != "off":
+        reranker = Reranker(model)
+        rerank_fn = lambda query, hits: rerank(query, hits, reranker, rerank_min)  # noqa: E731
     root = Path(__file__).parent / "eval_data"
     if argv[1] == "--corpus":
         questions = json.loads((root / "questions.json").read_text(encoding="utf-8"))
@@ -172,10 +189,10 @@ def main(argv: list[str]) -> int:
         for flag, k, cast in (("--chunk-size", "chunk_size", int), ("--pdf-mode", "pdf_mode", str)):
             if flag in argv:
                 options[k] = cast(argv[argv.index(flag) + 1])
-        rows, secs = run_corpus(questions, root / "corpus", options, min_relevance)
+        rows, secs = run_corpus(questions, root / "corpus", options, min_relevance, rerank_fn)
         print(f"Thời gian nạp: {secs:.1f}s")
     else:
-        rows = run_data_dir(json.loads(Path(argv[1]).read_text(encoding="utf-8")), min_relevance)
+        rows = run_data_dir(json.loads(Path(argv[1]).read_text(encoding="utf-8")), min_relevance, rerank_fn)
         if rows is None:
             print("Chưa có tài liệu nào")
             return 1

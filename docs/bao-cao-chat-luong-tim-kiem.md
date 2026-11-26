@@ -277,7 +277,7 @@ Lần chạy xác nhận mặc định đã đổi (`cd backend && ANONYMIZED_TE
 
 ## 6. Kết luận
 
-Số đo cuối lấy từ một lần chạy mới `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` (chạy lại sau khi hạ `ROW_MAX_CHARS` xuống 900) (cùng bộ mẫu: 44 câu, 35 có đáp án, 9 không liên quan; dữ liệu giả).
+Số đo cuối lấy từ một lần chạy mới `cd backend && FASTEMBED_CACHE_PATH=../data/models ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` sau khi thêm bước chấm lại (mục 7) (cùng bộ mẫu: 44 câu, 35 có đáp án, 9 không liên quan; dữ liệu giả).
 
 ### Cấu hình cuối
 
@@ -289,6 +289,7 @@ Số đo cuối lấy từ một lần chạy mới `cd backend && ANONYMIZED_TE
 | Excel | lặp giá trị ô gộp; cắt dòng dài hơn `ROW_MAX_CHARS = 900`; file trên 2 MB đọc `read_only` nên không lặp ô gộp; tiêu đề hai dòng tắt (`GROUP_HEADER = False`) | `backend/ingest.py` | 3 |
 | PDF | `PDF_MODE = "plain"` | `backend/ingest.py` | 4 |
 | Kích thước đoạn | `CHUNK_SIZE = 800` | `backend/ingest.py` | 5 |
+| Chấm lại đoạn | `BAAI/bge-reranker-v2-m3-int8`, bỏ đoạn điểm dưới `RERANK_MIN = -5.0`; câu không dấu không cắt (biến môi trường `RERANK_MODEL`, `RERANK_MIN`) | `backend/rerank.py`, `backend/ask.py` | 7 |
 | Phiên bản đọc file | `INGEST_VERSION = 3`; tài liệu cũ hơn tự index lại khi khởi động | `backend/ingest.py`, `backend/worker.py` | 5 |
 
 Tài liệu đã nạp bằng phiên bản cũ: khi máy chủ khởi động, mỗi tài liệu có phiên bản thấp hơn được xếp hàng index lại từ file gốc đã lưu. Bản cũ vẫn tìm được trong lúc chờ; index lại lỗi thì giữ bản cũ.
@@ -298,22 +299,81 @@ Tài liệu đã nạp bằng phiên bản cũ: khi máy chủ khởi động, m
 | Chỉ số | Ban đầu (mục 0) | Cuối |
 |---|---|---|
 | vitri@5 (35 câu có đáp án) | 0,77 (27/35) | **0,97 (34/35)** |
-| MRR | 0,73 | **0,86** |
+| MRR | 0,73 | **0,89** |
 | file@1 | 0,89 | 0,94 |
 | file@5 | 0,91 | **1,00** |
 | khong-dau vitri@5 | 0/4 | **3/4** |
 | bang vitri@5 | 0,50 (3/6) | 1,00 (6/6) |
-| khong-lien-quan, bắt được | 0/9 (chưa có ngưỡng) | **3/9** (0,33) |
+| khong-lien-quan, bắt được | 0/9 (chưa có ngưỡng) | **7/9** (0,78) |
 | Chặn nhầm | 0,00 | 0,00 |
-| Tìm mỗi câu (trung vị / p95) | 0,009 giây / 0,012 giây | 0,009 giây / 0,014 giây |
-| Nạp cả bộ mẫu | 2,4 giây | 2,3 giây |
+| Số đoạn hiện trung bình (câu có đáp án) | 5 | **3,34** |
+| Tìm mỗi câu (trung vị / p95) | 0,009 giây / 0,012 giây | 0,485 giây / 1,150 giây (gồm chấm lại) |
+| Nạp cả bộ mẫu | 2,4 giây | 2,1 giây |
 
 Cosine thấp nhất của câu có đáp án là 0,8313; cosine cao nhất của câu không liên quan là 0,8942.
 
 ### Còn lại và đề xuất cho đợt sau
 
-- **Reranker** (cross-encoder chấm lại cặp câu hỏi và đoạn): `bat_duoc` chỉ 3/9, dưới một nửa. Ngưỡng cosine chỉ chặn được câu lạc đề hẳn; câu cùng chủ đề công ty mà tài liệu không có (nghỉ kết hôn, làm thêm giờ ngày lễ, làm việc từ xa, học phí) vẫn lọt, vì cosine 0,85 đến 0,89 nằm lẫn với câu có đáp án.
-- **Đo lại ngưỡng trên tài liệu thật.** 0,81 đặt từ bộ mẫu nhỏ, dữ liệu giả, và model cho cosine dồn vào dải hẹp (0,79 đến 0,93). Cần ít nhất vài chục câu thật, cả câu có đáp án lẫn câu không có.
+- **Còn lọt 2/9 câu không liên quan** ("làm thêm giờ ngày lễ", "làm việc từ xa"): tài liệu có đoạn rất sát chủ đề. Model chấm lại lớn hơn có thể khá hơn, cần GPU để chạy nhanh (mục 7).
+- **Đo lại cả hai ngưỡng trên tài liệu thật** (`MIN_RELEVANCE` 0,81 và `RERANK_MIN` -5). Cả hai đặt từ bộ mẫu nhỏ, dữ liệu giả; ngưỡng chấm lại chỉ cách đoạn đúng thấp nhất 0,85 điểm. Cần ít nhất vài chục câu thật, cả câu có đáp án lẫn câu không có.
 - **Ưu tiên bản quy định mới.** Bộ mẫu có hai bản quy định nghỉ phép (2023, 2025); hiện chưa có gì cho hệ thống biết bản nào còn hiệu lực. Cần ngày hiệu lực của từng tài liệu (do người nạp khai hoặc lấy từ nội dung) rồi mới ưu tiên được bản mới.
-- **Câu không dấu còn trượt:** "nghi phep nam bao nhieu ngay" ra đúng hai file nghỉ phép nhưng hạng 1 đến 5 toàn đoạn khác mục 1 (số ngày nghỉ phép). Chưa có đề xuất rõ; xem lại cùng reranker.
+- **Câu không dấu:** "nghi phep nam bao nhieu ngay" vẫn trượt (đúng hai file, sai đoạn), và câu không dấu không được chấm lại vì model chấm sai. Đề xuất: thêm dấu cho câu hỏi trước khi tìm.
 - **Bằng chứng hẹp ở vài chỗ:** PDF hai cột (mẫu tự dựng, 3 câu), kích thước đoạn (2 câu đổi hạng), nhóm `bang` (một phần mức tăng là do nay ghi được vị trí dòng). Khi có tài liệu thật thì đo lại bằng `--pdf-mode`, `--chunk-size`.
+
+## 7. Chấm lại đoạn (reranker)
+
+**Vì sao:** ngưỡng cosine ở mục 2 chỉ chặn được câu lạc đề hẳn, và mỗi câu luôn hiện đủ 5 đoạn kể cả đoạn không trả lời được.
+
+### Thử trước: cắt từng đoạn theo cosine (không làm được)
+
+Áp ngưỡng cosine cho từng đoạn thay vì chỉ đoạn đứng đầu, đo bằng script tạm trên bộ mẫu:
+
+| Cách cắt | Còn tìm đúng | Mất đoạn đúng | Số đoạn hiện trung bình |
+|---|---|---|---|
+| Không cắt | 34/35 | 0 | 5 |
+| Bỏ đoạn cosine dưới 0,81 | 33/35 | 1 | 4,74 |
+| Bỏ đoạn kém đoạn đầu quá 0,05 | 33/35 | 1 | 4,00 |
+| Bỏ đoạn kém đoạn đầu quá 0,08 | 34/35 | 0 | 4,97 |
+
+- Câu mất là câu không dấu "luong thu viec bang bao nhieu phan tram": đoạn đúng chỉ có cosine 0,77, lọt vào top 5 nhờ BM25.
+- Với câu cùng chủ đề mà tài liệu không có, cả 5 đoạn có cosine 0,83 đến 0,89, bằng dải của đoạn đúng. Cosine đo "cùng chủ đề", không đo "trả lời được", nên không cắt được đoạn rác mà không mất đoạn đúng.
+
+### Chọn model
+
+FastEmbed 0.9.1 có sẵn `TextCrossEncoder`. Trong các model nó hỗ trợ, chỉ `BAAI/bge-reranker-v2-m3` vừa đa ngôn ngữ vừa có giấy phép dùng được (Apache 2.0); model đa ngôn ngữ của Jina cấm dùng thương mại, các model còn lại chỉ tiếng Anh hoặc Trung. Đo hai bản trên máy dev (CPU 12 nhân, không GPU), chấm 5 đoạn đầu:
+
+| Bản | Tải về | RAM thêm | Thời gian chấm (trung vị / p95) | Chặn được (ngưỡng an toàn) |
+|---|---|---|---|---|
+| `bge-reranker-v2-m3-int8` | 0,57 GB | 473 MB | 0,62 / 1,50 giây | 7/9 |
+| `bge-reranker-v2-m3` (đầy đủ) | 2,27 GB | 1085 MB | 0,81 / 2,13 giây | 7/9 (8/9 nếu chấp nhận mất 1 câu đúng) |
+
+Chất lượng gần như nhau nên chọn bản int8. Chấm 20 đoạn thay vì 5: 5,5 đến 7 giây mỗi câu và chỉ còn 33/35 câu đúng, nên loại.
+
+### Câu không dấu
+
+Model chấm đoạn đúng của câu không dấu rất thấp (-9 đến -11, so với -4 đến +7 của câu có dấu), nên cắt theo điểm sẽ giấu đáp án. Câu không có dấu nào (`unaccent(câu) == câu`, kể cả câu tiếng Anh) giữ nguyên 5 đoạn và thứ tự, không gọi model.
+
+### Chọn ngưỡng
+
+Với câu có dấu, đoạn đúng có điểm thấp nhất là -4,15 ("chi 20 triệu thì ai ký duyệt?"). Ngưỡng -4,5 và -5 cho cùng kết quả (34/35, chặn 7/9); chọn **-5** để chừa khoảng an toàn 0,85. Ngưỡng -4 đã làm mất câu trên.
+
+### Kết quả
+
+Lệnh: `cd backend && FASTEMBED_CACHE_PATH=../data/models ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` (và thêm `--no-rerank` để so).
+
+| | Không chấm lại | Chấm lại |
+|---|---|---|
+| `vitri@5` | 0,97 (34/35) | 0,97 (34/35) |
+| MRR | 0,86 | **0,89** |
+| `file@1` / `file@5` | 0,94 / 1,00 | 0,94 / 1,00 |
+| Chặn nhầm | 0,00 | 0,00 |
+| Câu không liên quan bị chặn | 3/9 | **7/9** |
+| Số đoạn hiện trung bình | 5 | **3,34** |
+| Tìm mỗi câu (trung vị / p95) | 0,009 / 0,012 giây | 0,485 / 1,150 giây |
+
+- MRR tăng ở `dien-dat-khac` (0,91 lên 0,94), `tu-ghep-viet-tat` (0,79 lên 0,83), `bang` (0,92 lên 1,00); không nhóm nào giảm.
+- Còn lọt 2 câu: "làm thêm giờ vào ngày lễ được trả bao nhiêu phần trăm lương?" và "nhân viên có được làm việc từ xa mấy ngày một tuần?". Tài liệu có đoạn rất sát hai chủ đề này.
+
+**Quyết định: GIỮ**, mặc định bật. Tắt bằng `RERANK_MODEL=off`. Đổi model thì phải đo lại `RERANK_MIN` vì mỗi model có thang điểm riêng.
+
+**Giới hạn:** ngưỡng đặt từ bộ mẫu giả, khoảng an toàn hẹp; chậm thêm khoảng nửa giây trên CPU. Có GPU thì nên đo lại với model lớn hơn.

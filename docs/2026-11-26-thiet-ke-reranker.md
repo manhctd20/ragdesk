@@ -1,10 +1,10 @@
 # Thiết kế: chấm lại đoạn tìm được (reranker)
 
-Trạng thái: chờ duyệt. Ngày 26/11/2026.
+Trạng thái: đã triển khai (kết quả: `bao-cao-chat-luong-tim-kiem.md`, mục 7). Ngày 26/11/2026.
 
 ## Vì sao làm
 
-Hiện tại ragdesk luôn hiện đủ 5 đoạn tìm được, kể cả đoạn không trả lời được câu hỏi. Ngưỡng "không liên quan" (cosine 0,81) chỉ chặn được câu lạc đề hẳn: câu cùng chủ đề công ty mà tài liệu không có ("công ty có cho nghỉ kết hôn không?") vẫn ra 5 đoạn về nghỉ phép. Đã đo: cắt từng đoạn theo cosine không làm được, vì cosine chỉ đo "cùng chủ đề", không đo "trả lời được" (xem `bao-cao-chat-luong-tim-kiem.md`, mục 7 sẽ thêm).
+Hiện tại ragdesk luôn hiện đủ 5 đoạn tìm được, kể cả đoạn không trả lời được câu hỏi. Ngưỡng "không liên quan" (cosine 0,81) chỉ chặn được câu lạc đề hẳn: câu cùng chủ đề công ty mà tài liệu không có ("công ty có cho nghỉ kết hôn không?") vẫn ra 5 đoạn về nghỉ phép. Đã đo: cắt từng đoạn theo cosine không làm được, vì cosine chỉ đo "cùng chủ đề", không đo "trả lời được" (xem `bao-cao-chat-luong-tim-kiem.md`, mục 7).
 
 Người dùng muốn: **chỉ hiện đoạn thật sự trả lời được; không có đoạn nào thì báo không tìm thấy.**
 

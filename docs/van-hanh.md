@@ -100,15 +100,15 @@ DATA_DIR=../data FASTEMBED_CACHE_PATH=../data/models ANONYMIZED_TELEMETRY=False 
   .venv/bin/python eval.py <file câu hỏi>.json
 ```
 
-Kết quả là tỉ lệ câu có đúng file nằm trong top 5, kèm danh sách câu trượt. Đây là số liệu dùng để quyết định có cần thêm reranker ở đợt sau không.
+Kết quả là tỉ lệ câu có đúng file nằm trong các đoạn hiện ra (sau khi chấm lại), kèm danh sách câu trượt. Bước chấm lại chạy giống hệt máy chủ, theo `RERANK_MODEL` và `RERANK_MIN`.
 
 ### Bộ mẫu `--corpus`
 
-Bộ tài liệu giả (10 file, 44 câu hỏi) nằm ở `backend/eval_data/`, dựng lại bằng `make_corpus.py`. Chế độ này nạp bộ mẫu vào Chroma tạm (không đụng `DATA_DIR`) và in số đo theo nhóm câu: `vitri@5` (đúng file và đúng vị trí trong top 5), `MRR`, `file@1`, `file@5`, tỉ lệ câu không liên quan bị chặn (`bắt được`) và câu có đáp án bị chặn nhầm.
+Bộ tài liệu giả (10 file, 44 câu hỏi) nằm ở `backend/eval_data/`, dựng lại bằng `make_corpus.py`. Chế độ này nạp bộ mẫu vào Chroma tạm (không đụng `DATA_DIR`) và in số đo theo nhóm câu: `vitri@5` (đúng file và đúng vị trí trong top 5), `MRR`, `file@1`, `file@5`, tỉ lệ câu không liên quan bị chặn (`bắt được`), câu có đáp án bị chặn nhầm, và số đoạn hiện trung bình.
 
 ```bash
 cd backend
-ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus [cờ]
+FASTEMBED_CACHE_PATH=../data/models ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus [cờ]
 ```
 
 | Cờ | Ý nghĩa |
@@ -118,5 +118,7 @@ ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus [cờ]
 | `--no-bigrams` | Tắt cặp tiếng khi tách từ |
 | `--no-unaccent` | Tắt bản bỏ dấu khi tách từ |
 | `--min-relevance X` | Đổi ngưỡng không liên quan, để thử |
+| `--no-rerank` | Tắt bước chấm lại (so với cấu hình cũ) |
+| `--rerank-min X` | Đổi ngưỡng chấm lại, để thử; đổi `RERANK_MODEL` thì dùng cờ này để tìm ngưỡng mới |
 
-Chạy không cờ cho số đo của cấu hình hiện tại; chạy lại sau mỗi thay đổi cách tách từ hay cách đọc file. Kết quả đã đo và cách chọn cấu hình: [báo cáo chất lượng tìm kiếm](bao-cao-chat-luong-tim-kiem.md). Dạng cũ `eval.py <file câu hỏi>.json` (đo trên `DATA_DIR` thật) vẫn dùng được và cũng nhận `--min-relevance`.
+Chạy không cờ cho số đo của cấu hình hiện tại; chạy lại sau mỗi thay đổi cách tách từ hay cách đọc file. Kết quả đã đo và cách chọn cấu hình: [báo cáo chất lượng tìm kiếm](bao-cao-chat-luong-tim-kiem.md). Dạng cũ `eval.py <file câu hỏi>.json` (đo trên `DATA_DIR` thật) vẫn dùng được và cũng nhận `--min-relevance`, `--no-rerank`, `--rerank-min`.

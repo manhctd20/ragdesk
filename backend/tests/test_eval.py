@@ -57,7 +57,8 @@ def test_first_rank():
 
 
 def row(group, file_rank, loc_rank, low=False, has=True, sec=1.0):
-    return {"group": group, "file_rank": file_rank, "loc_rank": loc_rank, "low_relevance": low, "has_answer": has, "seconds": sec}
+    return {"group": group, "file_rank": file_rank, "loc_rank": loc_rank, "low_relevance": low, "has_answer": has, "seconds": sec,
+            "shown": 0 if low else 5}
 
 
 def test_summarize_groups_and_totals():
@@ -117,6 +118,7 @@ def data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(d))
     monkeypatch.setattr(search, "Embedder", FakeEmbedder)
     monkeypatch.setattr(ev, "Embedder", FakeEmbedder, raising=False)
+    monkeypatch.setenv("RERANK_MODEL", "off")
     return d
 
 
@@ -197,3 +199,39 @@ def test_print_report_lists_top_cosine_and_flag_arg(capsys):
     ev.print_report(rows)
     out = capsys.readouterr().out
     assert "0.8123" in out and "0.7001" in out and "thấp nhất 0.8123" in out and "cao nhất 0.7001" in out
+
+
+def two_row_corpus(tmp_path, monkeypatch):
+    import openpyxl
+
+    d = tmp_path / "corpus" / "tc"
+    d.mkdir(parents=True)
+    wb = openpyxl.Workbook()
+    wb.active.title = "S"
+    wb.active.append(["Khoản", "Mức"])
+    wb.active.append(["Công tác phí", "500.000"])
+    wb.active.append(["Ăn trưa", "50.000"])
+    wb.save(d / "dm.xlsx")
+    monkeypatch.setattr(ev, "Embedder", FakeEmbedder)
+    return [{"question": "công tác phí", "group": "bang", "expect": [{"filename": "dm.xlsx", "sheet": "S", "row": 2}]}]
+
+
+def test_run_corpus_rerank_cut_all_marks_low(tmp_path, monkeypatch):
+    qs = two_row_corpus(tmp_path, monkeypatch)
+    rows, _ = ev.run_corpus(qs, tmp_path / "corpus", {}, min_relevance=0.0, rerank=lambda q, h: [])
+    assert rows[0]["low_relevance"] is True and rows[0]["shown"] == 0
+
+
+def test_run_corpus_rerank_order_drives_rank(tmp_path, monkeypatch):
+    qs = two_row_corpus(tmp_path, monkeypatch)
+    plain, _ = ev.run_corpus(qs, tmp_path / "corpus", {}, min_relevance=0.0)
+    rev, _ = ev.run_corpus(qs, tmp_path / "corpus", {}, min_relevance=0.0, rerank=lambda q, h: h[::-1])
+    assert rev[0]["shown"] == plain[0]["shown"] >= 2
+    assert rev[0]["loc_rank"] == plain[0]["shown"] - plain[0]["loc_rank"] + 1
+
+
+def test_summarize_reports_avg_shown():
+    item = ev.normalize({"question": "q", "group": "g", "expect": [{"filename": "a.pdf"}]})
+    rows = [ev.score(item, hits("a.pdf", "b.pdf"), 0.1, low=False), ev.score(item, hits("a.pdf"), 0.1, low=True)]
+    assert [r["shown"] for r in rows] == [2, 0]
+    assert ev.summarize(rows)["tong"]["so_doan_tb"] == 1.0
