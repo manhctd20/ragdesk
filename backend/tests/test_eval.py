@@ -23,39 +23,92 @@ def hits(*filenames):
     return [{"id": f"{n}:0", "text": "x", "meta": {"filename": n}, "score": 0.1, "matched": []} for n in filenames]
 
 
-def test_evaluate_counts_hits_and_reports_misses():
-    results = {
-        "q1": hits("a.pdf", "b.docx"),
-        "q2": hits("c.xlsx", "a.pdf"),
-        "q3": hits("b.docx", "c.xlsx"),
-    }
-    items = [
-        {"question": "q1", "filename": "a.pdf", "where": "trang 1"},
-        {"question": "q2", "filename": "a.pdf", "where": "trang 2"},
-        {"question": "q3", "filename": "a.pdf", "where": "mục 3"},
-    ]
-    asked = []
-
-    def search_fn(q):
-        asked.append(q)
-        return results[q]
-
-    correct, misses = ev.evaluate(items, search_fn)
-
-    assert correct == 2
-    assert misses == [{**items[2], "got": ["b.docx", "c.xlsx"]}]
-    assert asked == ["q1", "q2", "q3"]
+def test_hit_matches_location_and_file_only():
+    meta = {"filename": "a.pdf", "page": 2}
+    assert ev.hit_matches({"filename": "a.pdf", "page": 2}, meta)
+    assert not ev.hit_matches({"filename": "a.pdf", "page": 3}, meta)
+    assert not ev.hit_matches({"filename": "b.pdf", "page": 2}, meta)
+    assert ev.hit_matches({"filename": "a.pdf"}, meta)  # filename only: file match
+    assert not ev.hit_matches({"filename": "b.pdf"}, meta)
+    sheet = {"filename": "b.xlsx", "sheet": "S", "row": 4}
+    assert ev.hit_matches({"filename": "b.xlsx", "sheet": "S", "row": 4}, sheet)
+    assert not ev.hit_matches({"filename": "b.xlsx", "sheet": "S", "row": 5}, sheet)
+    assert not ev.hit_matches({"filename": "b.xlsx", "sheet": "S", "row": 4}, {"filename": "b.xlsx", "sheet": "S"})
+    assert ev.hit_matches({"filename": "c.docx", "section": "Điều 2"}, {"filename": "c.docx", "section": "Điều 2"})
+    assert not ev.hit_matches({"filename": "c.docx", "section": "Điều 2"}, {"filename": "c.docx", "section": "Điều 3"})
 
 
-def test_evaluate_matches_nfd_against_nfc():
+def test_hit_matches_nfd_filename_and_section():
     nfc = "Quy định nghỉ phép.docx"
-    items = [{"question": "q", "filename": unicodedata.normalize("NFD", nfc), "where": ""}]
-    correct, misses = ev.evaluate(items, lambda q: hits(nfc))
-    assert (correct, misses) == (1, [])
+    nfd = unicodedata.normalize("NFD", nfc)
+    assert ev.hit_matches({"filename": nfd, "section": nfd}, {"filename": nfc, "section": nfc})
 
 
-def test_evaluate_empty():
-    assert ev.evaluate([], lambda q: hits("a.pdf")) == (0, [])
+def test_first_rank():
+    hs = [{"meta": {"filename": "a.pdf", "page": p}} for p in (1, 2, 3)]
+    assert ev.first_rank([{"filename": "a.pdf", "page": 1}], hs, False) == 1
+    assert ev.first_rank([{"filename": "a.pdf", "page": 3}], hs, False) == 3
+    assert ev.first_rank([{"filename": "a.pdf", "page": 9}], hs, False) is None
+    assert ev.first_rank([{"filename": "b.pdf", "page": 1}], hs, True) is None
+    assert ev.first_rank([{"filename": "a.pdf", "page": 9}], hs, True) == 1  # by_file ignores location
+    two = [{"filename": "a.pdf", "page": 3}, {"filename": "a.pdf", "page": 2}]
+    assert ev.first_rank(two, hs, False) == 2
+    assert ev.first_rank([], hs, False) is None
+
+
+def row(group, file_rank, loc_rank, low=False, has=True, sec=1.0):
+    return {"group": group, "file_rank": file_rank, "loc_rank": loc_rank, "low_relevance": low, "has_answer": has, "seconds": sec}
+
+
+def test_summarize_groups_and_totals():
+    rows = [
+        row("g1", 1, 1, sec=1.0),
+        row("g1", 2, None, low=True, sec=2.0),
+        row("g2", 1, 4, sec=3.0),
+        row("khong-lien-quan", None, None, low=True, has=False),
+    ]
+    s = ev.summarize(rows)
+    assert s["g1"] == {"file@1": 0.5, "file@5": 1.0, "vitri@5": 0.5, "MRR": 0.5, "so_cau": 2}
+    assert s["g2"]["vitri@5"] == 1.0 and s["g2"]["MRR"] == 0.25
+    assert s["khong-lien-quan"]["bat_duoc"] == 1.0 and s["khong-lien-quan"]["so_cau"] == 1
+    t = s["tong"]
+    assert t["so_cau"] == 3
+    assert t["vitri@5"] == pytest.approx(2 / 3)
+    assert t["MRR"] == pytest.approx((1 + 0 + 0.25) / 3)
+    assert t["file@5"] == 1.0 and t["file@1"] == pytest.approx(2 / 3)
+    assert t["chan_nham"] == pytest.approx(1 / 3)
+    assert t["giay_trung_vi"] == 2.0 and t["giay_p95"] == 3.0
+
+
+def test_legacy_format_scores_by_file():
+    legacy = {"question": "q", "filename": "a.pdf", "where": "trang 1"}
+    item = ev.normalize(legacy)
+    assert item["expect"] == [{"filename": "a.pdf"}] and item["question"] == "q"
+    new = {"question": "q", "group": "g", "expect": [{"filename": "a.pdf", "page": 1}]}
+    assert ev.normalize(new) == new
+    r = ev.score(item, hits("b.pdf", "a.pdf"), 0.5)
+    assert r["file_rank"] == 2 and r["loc_rank"] == 2 and r["has_answer"]
+
+
+def test_run_corpus_adds_worker_meta(tmp_path, monkeypatch):
+    import openpyxl
+
+    d = tmp_path / "corpus" / "tai-chinh"
+    d.mkdir(parents=True)
+    wb = openpyxl.Workbook()
+    wb.active.title = "S"
+    wb.active.append(["Khoản", "Mức"])
+    wb.active.append(["Công tác phí", "500.000"])
+    wb.save(d / "dinh-muc.xlsx")
+    monkeypatch.setattr(ev, "Embedder", FakeEmbedder)
+    qs = [
+        {"question": "công tác phí", "group": "bang", "expect": [{"filename": "dinh-muc.xlsx", "sheet": "S"}]},
+        {"question": "không có", "group": "khong-lien-quan", "expect": []},
+    ]
+    rows, secs = ev.run_corpus(qs, tmp_path / "corpus", {})
+    assert secs >= 0 and len(rows) == 2
+    assert rows[0]["file_rank"] == 1 and rows[0]["loc_rank"] == 1 and rows[0]["has_answer"]
+    assert rows[1]["has_answer"] is False
 
 
 @pytest.fixture
