@@ -103,7 +103,7 @@ def run_corpus(questions: list[dict], corpus_dir: Path, options: dict, min_relev
             file_type = path.suffix.lower().lstrip(".")
             # same extra meta as worker._index, so search hits carry filename/folder/file_type
             extra = {"filename": _nfc(path.name), "folder": _nfc(path.parent.name), "file_type": file_type}
-            chunks = [Chunk(c.text, {**c.meta, **extra}) for c in ingest(path, file_type)]
+            chunks = [Chunk(c.text, {**c.meta, **extra}) for c in ingest(path, file_type, **{k: v for k, v in options.items() if k in ("chunk_size", "pdf_mode")})]
             if not chunks:
                 continue
             doc_id = f"d{n}"
@@ -169,6 +169,9 @@ def main(argv: list[str]) -> int:
     if argv[1] == "--corpus":
         questions = json.loads((root / "questions.json").read_text(encoding="utf-8"))
         options = {k: False for flag, k in (("--no-bigrams", "bigrams"), ("--no-unaccent", "unaccent_tokens")) if flag in argv}
+        for flag, k, cast in (("--chunk-size", "chunk_size", int), ("--pdf-mode", "pdf_mode", str)):
+            if flag in argv:
+                options[k] = cast(argv[argv.index(flag) + 1])
         rows, secs = run_corpus(questions, root / "corpus", options, min_relevance)
         print(f"Thời gian nạp: {secs:.1f}s")
     else:

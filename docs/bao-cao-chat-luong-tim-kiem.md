@@ -215,3 +215,58 @@ Còn trượt sau thay đổi (1 câu): `khong-dau` "nghi phep nam bao nhieu nga
 ### Tài liệu đã nạp trước đây
 
 `INGEST_VERSION = 2` chỉ là hằng số, chưa có gì dùng nó. Việc lưu phiên bản theo tài liệu và index lại file cũ là Task 8.
+
+## 4. PDF hai cột
+
+**Bằng chứng yếu.** Người dùng không có PDF hai cột thật, nên `ban-tin-noi-bo-hai-cot.pdf` do `make_corpus.py` tự tạo bằng `fpdf2`, ghi hết cột trái rồi mới sang cột phải (đúng thứ tự Word và LibreOffice khi xuất PDF). Chỉ 3 câu thuộc nhóm `hai-cot`, cả hai chế độ đều đã đạt tối đa ở các câu này, và `page` không phân biệt được thứ tự đọc vì cả hai cột nằm cùng một trang. PDF do công cụ khác xuất (InDesign, bản scan có OCR) có thể có thứ tự ghi khác, kết quả dưới đây không nói được gì về chúng.
+
+Thay đổi: `read_pdf(path, *, chunk_size, mode)`, `mode` là `"plain"` (cách cũ) hoặc `"layout"` (`extract_text(extraction_mode="layout")`); `eval.py` thêm cờ `--pdf-mode`.
+
+Lệnh đã chạy (trạng thái giữ ở mục 3, `--chunk-size` mặc định 500):
+
+```
+cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --pdf-mode plain
+cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --pdf-mode layout
+```
+
+| Chế độ | Tổng vitri@5 | MRR | file@1 | hai-cot vitri@5 (MRR) | Số đoạn của PDF hai cột |
+|---|---|---|---|---|---|
+| plain (hiện tại) | 0,97 (34/35) | 0,85 | 0,91 | 1,00 (1,00) | 2 |
+| layout | 0,97 (34/35) | 0,85 | 0,91 | 1,00 (1,00) | 3 |
+
+Hạng của từng câu so sánh từng câu một: không câu nào đổi hạng giữa hai chế độ. Chỉ cosine cao nhất nhích vài phần nghìn đến 0,01 (ví dụ "khám sức khỏe định kỳ" 0,8549 lên 0,8638), cosine thấp nhất của câu có đáp án vẫn 0,8313 nên ngưỡng không đổi.
+
+Nhìn vào chữ rút ra: ở chế độ `layout`, hai cột được xếp cạnh nhau theo từng dòng, nên đoạn đọc ra trộn dòng của cột trái với dòng của cột phải (`...khám sức khỏe\nCuối năm là lúc...\nđịnh kỳ diễn ra...`). Số đo không phạt điều này vì câu hỏi vẫn rơi đúng trang, nhưng với người đọc đoạn trích thì `plain` rõ ràng dễ đọc hơn trên PDF mẫu này.
+
+**Quyết định: GIỮ `PDF_MODE = "plain"`.** Điểm chính không tăng (34 so với 34), không có nhóm nào đổi; không qua quy tắc để chuyển. Không thêm thư viện.
+
+## 5. Kích thước đoạn
+
+**Bằng chứng hẹp.** Trong bộ mẫu chỉ hai đoạn văn đủ dài để cắt khác nhau giữa 500 và 800 ký tự (Điều 12 của nội quy và trang 4 của `quy-trinh-thanh-toan.pdf`), nên 500 so với 800 chỉ khác hạng ở 2 câu. 300 cắt nhiều văn bản hơn nên khác ở 4 câu. Đủ để không có lý do đổi, chưa đủ để kết luận kích thước tốt nhất cho tài liệu thật.
+
+Thay đổi: `ingest(path, file_type, *, chunk_size=CHUNK_SIZE, pdf_mode=PDF_MODE)`; độ chồng lấn `round(chunk_size * 0.2)` (500 cho ra 100 như cũ). `chunk_size` được dùng cho chữ PDF, chữ thường của Word và các dòng bảng Word; dòng Excel dài vẫn cắt theo `ROW_MAX_CHARS` (1200, chồng lấn 100). `eval.py` thêm cờ `--chunk-size`.
+
+Lệnh đã chạy (`--pdf-mode` mặc định plain):
+
+```
+cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --chunk-size 300
+cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --chunk-size 500
+cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --chunk-size 800
+```
+
+| Kích thước | Tổng vitri@5 | MRR | file@1 | file@5 | dien-dat-khac MRR | hai-cot MRR | khong-dau MRR |
+|---|---|---|---|---|---|---|---|
+| 300 | 0,97 (34/35) | 0,87 | 0,91 | 1,00 | 1,00 | 0,73 | 0,42 |
+| **500 (hiện tại)** | 0,97 (34/35) | 0,85 | 0,91 | 1,00 | 0,86 | 1,00 | 0,38 |
+| 800 | 0,97 (34/35) | 0,87 | 0,94 | 1,00 | 0,92 | 1,00 | 0,38 |
+
+Câu đổi hạng (so với 500, hạng của đoạn đúng):
+
+- 300: "chi 20 triệu thì ai ký duyệt" 5 lên 1; "làm hỏng máy tính công ty thì phải đền" 2 lên 1; "luong thu viec bang bao nhieu phan tram" 3 lên 2; "hệ thống ERP bảo trì lúc mấy giờ" (hai-cột) 1 xuống 5.
+- 800: "chi 20 triệu thì ai ký duyệt" 5 lên 4; "làm hỏng máy tính công ty thì phải đền" 2 lên 1; không câu nào xuống.
+
+Chặn nhầm vẫn 0,00, cosine thấp nhất của câu có đáp án vẫn 0,8313 ở cả ba mức (ngưỡng 0,81 còn nguyên). Thời gian nạp 1,7 đến 1,9 giây.
+
+**Quyết định: GIỮ `CHUNK_SIZE = 500`.** Không mức nào làm điểm chính tăng được 1 câu (đều 34/35), nên không qua quy tắc đổi. 800 có MRR cao hơn 0,02 nhưng đó là hạng của 2 câu trên hai đoạn dài, không đủ để bắt tài liệu cũ phải index lại. 300 làm câu `hai-cot` xuống hạng 5 (vẫn trong top 5, nên chưa mất theo vitri@5) và cho thấy đoạn ngắn tách mất ngữ cảnh. Nếu sau này có tài liệu thật dài, đo lại bằng `--chunk-size`.
+
+**`INGEST_VERSION` giữ 2** vì `PDF_MODE` và `CHUNK_SIZE` không đổi; tài liệu đã nạp không cần index lại do Task 7.

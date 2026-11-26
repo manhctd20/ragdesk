@@ -469,3 +469,44 @@ def test_split_short_text_single_chunk():
 def test_split_empty_and_whitespace():
     assert ingest.split("") == []
     assert ingest.split("   \n\n \t ") == []
+
+
+# chunk size and PDF mode as parameters
+
+LONG_PROSE = " ".join(f"Sentence {i} is about annual leave and travel allowance of staff." for i in range(40))
+
+
+def test_ingest_chunk_size_param(tmp_path):
+    path = make_pdf(tmp_path / "a.pdf", pages=(LONG_PROSE,))
+    small = ingest.ingest(path, "pdf", chunk_size=300)
+    large = ingest.ingest(path, "pdf", chunk_size=800)
+    assert len(small) > len(large)
+    assert all(len(c.text) <= 300 for c in small)
+
+
+def test_ingest_chunk_size_reaches_docx_prose_and_table_rows(tmp_path):
+    doc = Document()
+    doc.add_paragraph(LONG_PROSE)
+    table = doc.add_table(rows=2, cols=2)
+    for cell, text in zip(table.rows[0].cells + table.rows[1].cells, ("Mục", "Nội dung", "Phép", LONG_PROSE)):
+        cell.text = text
+    path = tmp_path / "a.docx"
+    doc.save(path)
+    small = ingest.ingest(path, "docx", chunk_size=300)
+    large = ingest.ingest(path, "docx", chunk_size=800)
+    assert len(small) > len(large)
+    assert all(len(c.text) <= 300 for c in small)
+
+
+def test_read_pdf_layout_mode_runs(tmp_path):
+    path = make_pdf(tmp_path / "a.pdf")
+    for mode in ("plain", "layout"):
+        chunks = ingest.read_pdf(path, chunk_size=500, mode=mode)
+        assert "annual leave" in " ".join(c.text for c in chunks)
+    assert ingest.ingest(path, "pdf", pdf_mode="layout")
+
+
+def test_ingest_defaults_unchanged(tmp_path):
+    assert (ingest.CHUNK_SIZE, ingest.PDF_MODE) == (500, "plain")
+    path = make_pdf(tmp_path / "a.pdf", pages=(LONG_PROSE,))
+    assert ingest.ingest(path, "pdf") == ingest.ingest(path, "pdf", chunk_size=500, pdf_mode="plain")
