@@ -1,11 +1,13 @@
 import logging
 import os
 import queue
+import shutil
 import threading
+import uuid
 from pathlib import Path
 
 import store
-from ingest import Chunk, IngestError, ingest
+from ingest import INGEST_VERSION, Chunk, IngestError, ingest
 from search import Bm25Holder, Index
 
 BATCH = 32
@@ -20,6 +22,10 @@ class Worker:
         self.bm25 = bm25
         self.files_root = Path(files_root)
         self.queue: queue.Queue = queue.Queue()
+        # Held while the worker claims a row or swaps a finished one in, and by callers that must see a
+        # consistent "which row is current / is its re-index running" (upload, delete).
+        self.lock = threading.RLock()
+        self._running: str | None = None
 
     def start(self) -> None:
         threading.Thread(target=self._loop, daemon=True).start()
@@ -41,7 +47,10 @@ class Worker:
                 self.queue.task_done()
 
     def run_job(self, kind: str, doc_id: str) -> None:
-        (self._index if kind == "index" else self._delete)(doc_id)
+        try:
+            (self._index if kind == "index" else self._delete)(doc_id)
+        finally:
+            self._running = None
 
     def rebuild_bm25(self, also: str | None = None) -> None:
         # Only ready docs (plus `also`) are searchable, so orphan chunks stay hidden.
@@ -59,7 +68,9 @@ class Worker:
         return dest
 
     def _index(self, doc_id: str) -> None:
-        row = store.get(doc_id)
+        with self.lock:
+            row = store.get(doc_id)
+            self._running = doc_id
         if row is None or row["status"] != "indexing":
             return
         tmp = self._tmp(doc_id)
@@ -76,15 +87,21 @@ class Worker:
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(tmp, dest)
             self.rebuild_bm25(also=doc_id)  # searchable before clients see "ready"
-            store.update(doc_id, status="ready", chunk_count=len(chunks))
-            self._drop_replaced(row["replaces_id"])
+            with self.lock:
+                store.update(doc_id, status="ready", chunk_count=len(chunks), ingest_version=INGEST_VERSION,
+                             reindex=0)
+                self._drop_replaced(row["replaces_id"])
         except Exception as e:
             if isinstance(e, IngestError):
                 message = str(e)
             else:
                 message = "Lỗi khi index: " + type(e).__name__
                 logger.exception("index failed for doc %s", doc_id)
-            store.update(doc_id, status="error", error=message)
+            if row["reindex"]:  # the old version stays as it was; users never see this row
+                logger.warning("re-index of doc %s failed, keeping the old version: %s", row["replaces_id"], message)
+                store.delete(doc_id)
+            else:
+                store.update(doc_id, status="error", error=message)
             tmp.unlink(missing_ok=True)
             try:
                 self.index.delete_doc(doc_id)
@@ -101,6 +118,7 @@ class Worker:
             logger.exception("cleanup of replaced doc %s failed", old)
 
     def _delete(self, doc_id: str) -> None:
+        self.cancel_reindex(doc_id)
         row = store.get(doc_id)
         self.index.delete_doc(doc_id)
         if row is not None:
@@ -116,5 +134,41 @@ class Worker:
         for row in store.list_indexing():
             self.index.delete_doc(row["id"])
             self._tmp(row["id"]).unlink(missing_ok=True)
-            store.update(row["id"], status="error", error=INTERRUPTED)
+            if row["reindex"]:
+                store.delete(row["id"])  # reindex_outdated() queues it again
+            else:
+                store.update(row["id"], status="error", error=INTERRUPTED)
         self.rebuild_bm25()
+
+    def cancel_reindex(self, doc_id: str) -> bool:
+        """Drop the queued re-index of doc_id (its job then finds no row). False if it is running now."""
+        with self.lock:
+            rows = [r for r in store.list_indexing() if r["reindex"] and r["replaces_id"] == doc_id]
+            if any(r["id"] == self._running for r in rows):
+                return False
+            for r in rows:
+                store.delete(r["id"])
+                self._tmp(r["id"]).unlink(missing_ok=True)
+        return True
+
+    def reindex_outdated(self) -> int:
+        """Queue a re-index, from the stored original, of every ready doc read by an older ingest version."""
+        pending = {r["replaces_id"] for r in store.list_indexing() if r["reindex"]}
+        count = 0
+        for row in store.list():
+            if row["status"] != "ready" or (row["ingest_version"] or 0) >= INGEST_VERSION or row["id"] in pending:
+                continue
+            new = str(uuid.uuid4())
+            tmp = self._tmp(new)
+            try:
+                tmp.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(self._dest(row), tmp)
+            except (OSError, ValueError) as e:
+                logger.warning("skip re-index of doc %s: %s", row["id"], e)
+                tmp.unlink(missing_ok=True)
+                continue
+            store.create(new, row["filename"], row["folder"], tmp.stat().st_size, row["file_type"],
+                         replaces_id=row["id"], reindex=True)
+            self.enqueue_index(new)
+            count += 1
+        return count

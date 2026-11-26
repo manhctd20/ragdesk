@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 import uuid
@@ -18,7 +19,7 @@ from openpyxl import Workbook
 import store
 from app import clean_name, create_app, sse_stream
 from ask import ask_events
-from ingest import Chunk
+from ingest import INGEST_VERSION, Chunk
 from search import Index
 
 DIM = 384
@@ -806,3 +807,87 @@ def test_min_relevance_default_is_constant(open_client, tmp_path):
     c = open_client()
     upload_ready(c, tmp_path)
     assert ask(c).json()["low_relevance"] is (1.0 < MIN_RELEVANCE)
+
+
+def pending_reindex(files, old):
+    """A queued (not yet running) re-index row of `old`, as Worker.reindex_outdated leaves it."""
+    row = store.get(old)
+    new = str(uuid.uuid4())
+    tmp = files / ".tmp" / new
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_bytes((files / row["folder"] / row["filename"]).read_bytes())
+    store.create(new, row["filename"], row["folder"], row["size_bytes"], row["file_type"], old, reindex=True)
+    return new
+
+
+def test_documents_listing_hides_reindex_rows(open_client, files, tmp_path):
+    c = open_client()
+    old = upload_ready(c, tmp_path, "a.xlsx")
+    pending_reindex(files, old)
+    listing = c.get("/api/documents").json()
+    assert [d["id"] for d in listing["documents"]] == [old]
+    assert listing["folders"] == [{"name": FOLDER, "count": 1}]
+    assert [d["id"] for d in c.get("/api/documents", params={"folder": FOLDER}).json()["documents"]] == [old]
+
+
+def test_startup_reindexes_outdated_docs(open_client, files, tmp_path):
+    c = open_client()
+    old = upload_ready(c, tmp_path, "a.xlsx")
+    current = upload_ready(c, tmp_path, "b.xlsx")
+    lost = upload_ready(c, tmp_path, "mat.xlsx")
+    store.update(old, ingest_version=None)
+    store.update(lost, ingest_version=None)
+    (files / FOLDER / "mat.xlsx").unlink()
+    data = (files / FOLDER / "a.xlsx").read_bytes()
+
+    c2 = open_client()  # restart on the same data dir
+    wait_for(lambda: store.get(old) is None)
+    c2.app.state.worker.queue.join()
+
+    docs = {d["filename"]: d for d in c2.get("/api/documents").json()["documents"]}
+    assert set(docs) == {"a.xlsx", "b.xlsx", "mat.xlsx"}
+    assert docs["a.xlsx"]["status"] == "ready" and docs["a.xlsx"]["ingest_version"] == INGEST_VERSION
+    assert docs["b.xlsx"]["id"] == current
+    assert docs["mat.xlsx"]["id"] == lost  # missing original: skipped, startup not broken
+    assert (files / FOLDER / "a.xlsx").read_bytes() == data
+    assert docs["a.xlsx"]["id"] in source_doc_ids(ask(c2, "Mục nội dung"))
+
+
+def test_upload_during_pending_reindex_replaces_old(open_client, files, tmp_path):
+    c = open_client()
+    old = upload_ready(c, tmp_path, "a.xlsx")
+    re = pending_reindex(files, old)
+
+    data = xlsx_bytes(tmp_path, 4, prefix="Mới")
+    r = upload(c, data, "a.xlsx")
+    assert r.status_code == 202, r.text
+    new = r.json()["id"]
+    assert r.json()["replaces_id"] == old
+    assert store.get(re) is None
+    assert not (files / ".tmp" / re).exists()
+
+    c.app.state.worker.enqueue_index(re)  # its queued job reaches an empty row
+    wait_for(lambda: status(new) == "ready")
+    c.app.state.worker.queue.join()
+    assert [d["id"] for d in c.get("/api/documents").json()["documents"]] == [new]
+    assert (files / FOLDER / "a.xlsx").read_bytes() == data
+
+
+def test_delete_during_pending_reindex_via_api(open_client, files, tmp_path):
+    c = open_client()
+    old = upload_ready(c, tmp_path, "a.xlsx")
+    re = pending_reindex(files, old)
+    worker = c.app.state.worker
+    gate, real_embed = threading.Event(), worker.embedder.embed_passages
+    worker.embedder.embed_passages = lambda texts: gate.wait(30) and real_embed(texts)
+    busy = upload(c, xlsx_bytes(tmp_path, 2), "ban.xlsx").json()["id"]  # keeps the worker busy
+    worker.enqueue_index(re)  # queued ahead of the delete, as at startup
+
+    assert c.delete(f"/api/documents/{old}", headers=ADMIN).status_code == 202
+    assert store.get(re) is None  # cancelled synchronously by the endpoint
+    gate.set()
+    worker.queue.join()
+
+    assert [r["id"] for r in store.list()] == [busy] and store.list_indexing() == []
+    assert regular_files(files) == [files / FOLDER / "ban.xlsx"]
+    assert source_doc_ids(ask(c)) == {busy}

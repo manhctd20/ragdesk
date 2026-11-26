@@ -79,6 +79,8 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
         files_root = data_dir / "files"
         worker = Worker(index, embedder or Embedder(), bm25, files_root)
         worker.recover()
+        if n := worker.reindex_outdated():
+            logger.info("queued %d documents for re-index with the current reader", n)
         worker.start()
         app.state.worker, app.state.index, app.state.bm25, app.state.files_root = worker, index, bm25, files_root
         app.state.embedder = worker.embedder
@@ -119,7 +121,6 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
         with _upload_lock:
             if any(r["filename"] == filename and r["status"] == "indexing" for r in store.list(folder)):
                 raise HTTPException(409, "File cùng tên đang được index")
-            old = store.find_ready(folder, filename)
             doc_id = str(uuid.uuid4())
             tmp = files_root / ".tmp" / doc_id
             tmp.parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +132,13 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
                         if size > max_mb * MIB:
                             raise HTTPException(413, f"File vượt quá {max_mb} MB")
                         out.write(chunk)
-                row = store.create(doc_id, filename, folder, size, file_type, old["id"] if old else None)
+                worker = app.state.worker
+                with worker.lock:
+                    old = store.find_ready(folder, filename)
+                    # a queued re-index of the old version is moot: this upload replaces it
+                    if old and not worker.cancel_reindex(old["id"]):
+                        raise HTTPException(409, "File cùng tên đang được index")
+                    row = store.create(doc_id, filename, folder, size, file_type, old["id"] if old else None)
             except BaseException:
                 tmp.unlink(missing_ok=True)
                 raise
@@ -140,12 +147,15 @@ def create_app(env: Mapping[str, str] | None = None, *, embedder=None, stream_an
 
     @app.delete("/api/documents/{doc_id}", status_code=202, dependencies=[Depends(require_admin)])
     def delete_document(doc_id: str):
-        row = store.get(doc_id)
-        if row is None:
-            raise HTTPException(404, "Không có tài liệu")
-        if row["status"] == "indexing":
-            raise HTTPException(409, "File đang index, chờ xong rồi xoá")
-        app.state.worker.enqueue_delete(doc_id)
+        worker = app.state.worker
+        with worker.lock:
+            row = store.get(doc_id)
+            if row is None:
+                raise HTTPException(404, "Không có tài liệu")
+            # the delete job queues behind a pending re-index, which would otherwise swap the doc back in
+            if row["status"] == "indexing" or not worker.cancel_reindex(doc_id):
+                raise HTTPException(409, "File đang index, chờ xong rồi xoá")
+        worker.enqueue_delete(doc_id)
         return {"id": doc_id}
 
     def start_ask(body: AskBody) -> tuple[str | None, Iterator[tuple[str, dict]]]:

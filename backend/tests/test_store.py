@@ -138,3 +138,45 @@ def test_list_indexing_returns_only_indexing_rows():
     store.update("r1", status="ready")
     store.update("e1", status="error", error="x")
     assert [r["id"] for r in store.list_indexing()] == ["i1"]
+
+
+OLD_SCHEMA = """CREATE TABLE documents (
+    id TEXT PRIMARY KEY, filename TEXT NOT NULL, folder TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf','docx','xlsx')),
+    status TEXT NOT NULL CHECK (status IN ('indexing','ready','error')),
+    progress_done INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 0, error TEXT,
+    chunk_count INTEGER NOT NULL DEFAULT 0, replaces_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+)"""
+
+
+def test_store_adds_columns_to_existing_db(tmp_path):
+    path = tmp_path / "old.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(OLD_SCHEMA)
+    conn.execute("INSERT INTO documents (id, filename, folder, size_bytes, file_type, status, chunk_count,"
+                 " created_at, updated_at) VALUES ('d1', 'a.pdf', 'A', 5, 'pdf', 'ready', 2, 't0', 't1')")
+    conn.commit()
+    conn.close()
+
+    store.init(path)
+    store.init(path)  # second start: columns already there
+
+    row = store.get("d1")
+    assert row["ingest_version"] is None
+    assert row["reindex"] == 0
+    assert {k: row[k] for k in ("filename", "folder", "size_bytes", "status", "chunk_count", "created_at",
+                                "updated_at")} == {"filename": "a.pdf", "folder": "A", "size_bytes": 5,
+                                                   "status": "ready", "chunk_count": 2, "created_at": "t0",
+                                                   "updated_at": "t1"}
+
+
+def test_create_reindex_row_is_hidden_from_list_and_folders():
+    _new("old", folder="A")
+    store.update("old", status="ready", ingest_version=1)
+    _new("re", folder="A", replaces_id="old", reindex=True)
+    assert store.get("re")["reindex"] == 1
+    assert store.get("old")["ingest_version"] == 1
+    assert [r["id"] for r in store.list()] == ["old"]
+    assert [r["id"] for r in store.list(folder="A")] == ["old"]
+    assert store.folders() == [{"name": "A", "count": 1}]
+    assert [r["id"] for r in store.list_indexing()] == ["re"]

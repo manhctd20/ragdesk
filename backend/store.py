@@ -8,7 +8,10 @@ from pathlib import Path
 _COLUMNS = (
     "id", "filename", "folder", "size_bytes", "file_type", "status", "progress_done",
     "progress_total", "error", "chunk_count", "replaces_id", "created_at", "updated_at",
+    "ingest_version", "reindex",
 )
+# Columns added after the first release: DDL only, old rows get the default (NULL ingest_version = outdated).
+_ADDED = (("ingest_version", "INTEGER"), ("reindex", "INTEGER NOT NULL DEFAULT 0"))
 _UPDATABLE = frozenset(_COLUMNS) - {"id", "created_at", "updated_at"}
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -44,6 +47,10 @@ def init(path: str | Path) -> None:
                 updated_at TEXT NOT NULL
             )"""
         )
+        have = {r["name"] for r in _conn.execute("PRAGMA table_info(documents)")}
+        for name, ddl in _ADDED:
+            if name not in have:
+                _conn.execute(f"ALTER TABLE documents ADD COLUMN {name} {ddl}")
         _conn.commit()
 
 
@@ -58,12 +65,12 @@ def _write(sql: str, args: tuple = ()) -> None:
 
 
 def create(id: str, filename: str, folder: str, size_bytes: int, file_type: str,
-           replaces_id: str | None = None) -> dict:
+           replaces_id: str | None = None, reindex: bool = False) -> dict:
     now = _now()
     _write(
-        "INSERT INTO documents (id, filename, folder, size_bytes, file_type, status, replaces_id,"
-        " created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'indexing', ?, ?, ?)",
-        (id, filename, folder, size_bytes, file_type, replaces_id, now, now),
+        "INSERT INTO documents (id, filename, folder, size_bytes, file_type, status, replaces_id, reindex,"
+        " created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'indexing', ?, ?, ?, ?)",
+        (id, filename, folder, size_bytes, file_type, replaces_id, int(reindex), now, now),
     )
     return get(id)
 
@@ -73,15 +80,17 @@ def get(id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+# Pending re-index rows (reindex = 1) are internal: list() and folders() never show them.
 def list(folder: str | None = None) -> list[dict]:
     order = " ORDER BY created_at DESC, rowid DESC"
     if folder is None:
-        return _query("SELECT * FROM documents" + order)
-    return _query("SELECT * FROM documents WHERE folder = ?" + order, (folder,))
+        return _query("SELECT * FROM documents WHERE reindex = 0" + order)
+    return _query("SELECT * FROM documents WHERE reindex = 0 AND folder = ?" + order, (folder,))
 
 
 def folders() -> list[dict]:
-    return _query("SELECT folder AS name, COUNT(*) AS count FROM documents GROUP BY folder ORDER BY folder")
+    return _query("SELECT folder AS name, COUNT(*) AS count FROM documents WHERE reindex = 0"
+                  " GROUP BY folder ORDER BY folder")
 
 
 def update(id: str, **fields) -> None:

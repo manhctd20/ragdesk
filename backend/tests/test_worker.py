@@ -9,6 +9,7 @@ from pypdf import PdfWriter
 
 import store
 from search import Bm25Holder, Index
+from ingest import INGEST_VERSION
 from worker import BATCH, Worker
 
 DIM = 384
@@ -461,3 +462,164 @@ def test_doc_is_searchable_before_it_is_marked_ready(env, tmp_path, monkeypatch)
     monkeypatch.setattr(store, "update", spy_update)
     env.index_now(xlsx_bytes(tmp_path, 2))
     assert seen == [True]
+
+
+def make_outdated(env, data, version=None, **kw):
+    doc_id = env.index_now(data, **kw)
+    store.update(doc_id, ingest_version=version)
+    return doc_id
+
+
+def queued(worker):
+    jobs = []
+    while not worker.queue.empty():
+        jobs.append(worker.queue.get_nowait())
+        worker.queue.task_done()
+    return jobs
+
+
+def test_index_writes_ingest_version(env, tmp_path):
+    doc_id = env.index_now(xlsx_bytes(tmp_path, 2))
+    assert store.get(doc_id)["ingest_version"] == INGEST_VERSION
+
+
+def test_reindex_outdated_swaps_in_new_chunks(env, tmp_path):
+    data = xlsx_bytes(tmp_path, 3, prefix="Cũ")
+    old = make_outdated(env, data)
+    old_chunks = env.chunk_ids(old)
+
+    assert env.worker.reindex_outdated() == 1
+    assert env.worker.reindex_outdated() == 0  # already pending
+
+    [(kind, new)] = queued(env.worker)
+    assert kind == "index"
+    row = store.get(new)
+    assert (row["status"], row["reindex"], row["replaces_id"]) == ("indexing", 1, old)
+    assert env.tmp_file(new).read_bytes() == data
+    # old stays searchable while the re-index waits
+    assert store.get(old)["status"] == "ready"
+    assert old_chunks <= env.bm25_ids()
+
+    env.worker.run_job("index", new)
+
+    assert store.get(old) is None
+    assert env.chunk_ids(old) == set()
+    row = store.get(new)
+    assert (row["status"], row["reindex"], row["ingest_version"]) == ("ready", 0, INGEST_VERSION)
+    assert len(env.chunk_ids(new)) == 3
+    assert env.bm25_docs() == frozenset({new})
+    assert env.dest().read_bytes() == data
+    assert not env.tmp_file(new).exists()
+    assert [r["id"] for r in store.list()] == [new]
+
+
+def test_reindex_failure_keeps_old_and_hides_error(env, tmp_path, caplog):
+    data = xlsx_bytes(tmp_path, 40, prefix="Cũ")
+    old = make_outdated(env, data, version=INGEST_VERSION - 1)
+    old_chunks = env.chunk_ids(old)
+    env.worker.reindex_outdated()
+    [(_, new)] = queued(env.worker)
+    env.embedder.fail_on = len(env.embedder.calls) + 2
+    env.embedder.exc = RuntimeError("boom")
+
+    env.worker.run_job("index", new)
+
+    assert store.get(new) is None
+    assert env.chunk_ids(new) == set()
+    assert not env.tmp_file(new).exists()
+    assert [(r["id"], r["status"]) for r in store.list()] == [(old, "ready")]
+    assert store.get(old)["ingest_version"] == INGEST_VERSION - 1
+    assert env.chunk_ids(old) == old_chunks
+    assert env.bm25_docs() == frozenset({old})
+    assert env.dest().read_bytes() == data
+    assert any(r.levelname == "WARNING" and old in r.getMessage() for r in caplog.records)
+
+
+def test_recover_drops_interrupted_reindex_rows(env, tmp_path):
+    from ingest import Chunk
+
+    old = make_outdated(env, xlsx_bytes(tmp_path, 3))
+    env.worker.reindex_outdated()
+    [(_, new)] = queued(env.worker)
+    env.index.add(new, [Chunk("dở", {"sheet": "Bảng", "row": 2})], [[1.0] + [0.0] * (DIM - 1)])
+
+    restarted = Worker(Index(tmp_path / "data" / "chroma"), FakeEmbedder(), Bm25Holder(), env.files)
+    restarted.recover()
+
+    assert store.get(new) is None
+    assert env.chunk_ids(new) == set()
+    assert not env.tmp_file(new).exists()
+    assert store.get(old)["status"] == "ready"
+    assert restarted.reindex_outdated() == 1
+
+
+def test_current_version_docs_not_reindexed(env, tmp_path):
+    current = env.index_now(xlsx_bytes(tmp_path, 2))
+    errored = env.index_now(b"junk", filename="hong.xlsx")
+    store.update(errored, ingest_version=None)
+    assert store.get(errored)["status"] == "error"
+
+    assert env.worker.reindex_outdated() == 0
+    assert queued(env.worker) == []
+    assert {r["id"] for r in store.list()} == {current, errored}
+
+
+def test_reindex_skips_missing_original_file(env, tmp_path, caplog):
+    gone = make_outdated(env, xlsx_bytes(tmp_path, 2), filename="mat.xlsx")
+    env.dest(filename="mat.xlsx").unlink()
+    kept = make_outdated(env, xlsx_bytes(tmp_path, 2), filename="con.xlsx")
+
+    assert env.worker.reindex_outdated() == 1
+    [(_, new)] = queued(env.worker)
+    assert store.get(new)["replaces_id"] == kept
+    assert store.get(gone)["status"] == "ready"
+    assert list((env.files / ".tmp").iterdir()) == [env.tmp_file(new)]
+    assert any(r.levelname == "WARNING" and gone in r.getMessage() for r in caplog.records)
+
+
+def test_delete_during_pending_reindex_does_not_resurrect(env, tmp_path):
+    old = make_outdated(env, xlsx_bytes(tmp_path, 3))
+    env.worker.reindex_outdated()
+    # what the delete endpoint does: cancel the pending re-index, then queue the delete behind it
+    assert env.worker.cancel_reindex(old)
+    env.worker.enqueue_delete(old)
+
+    env.worker.start()
+    env.worker.queue.join()
+
+    assert store.list() == []
+    assert store.list_indexing() == []
+    assert env.index.count() == 0
+    assert not env.dest().exists()
+    assert regular(env.files) == []
+
+
+def test_delete_job_drops_pending_reindex_row(env, tmp_path):
+    old = make_outdated(env, xlsx_bytes(tmp_path, 3))
+    env.worker.reindex_outdated()
+    [(_, new)] = queued(env.worker)
+
+    env.worker.run_job("delete", old)
+    env.worker.run_job("index", new)
+
+    assert store.get(old) is None and store.get(new) is None
+    assert env.index.count() == 0
+    assert regular(env.files) == []
+
+
+def test_cancel_reindex_refuses_while_it_runs(env, tmp_path):
+    old = make_outdated(env, xlsx_bytes(tmp_path, 3))
+    env.worker.reindex_outdated()
+    [(_, new)] = queued(env.worker)
+    answers = []
+    env.embedder.on_call = lambda texts: answers.append(env.worker.cancel_reindex(old))
+
+    env.worker.run_job("index", new)
+
+    assert answers == [False]
+    assert store.get(new)["status"] == "ready"
+    assert env.worker.cancel_reindex(new)  # nothing pending afterwards
+
+
+def regular(root):
+    return [p for p in root.rglob("*") if p.is_file()]
