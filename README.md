@@ -1,4 +1,4 @@
-# Tra cứu nội bộ
+# ragdesk · Tra cứu nội bộ
 
 Hỏi–đáp trên tài liệu nội bộ của team, chạy trong mạng LAN. Quản trị nạp file PDF, Word, Excel; mọi người gõ câu hỏi bằng tiếng Việt hoặc tiếng Anh và nhận lại các đoạn tài liệu liên quan nhất, kèm vị trí trong file. Có thể bật thêm "AI ngoài" (Claude, OpenAI hoặc Gemini) để có câu trả lời viết sẵn, kèm trích dẫn nguồn.
 

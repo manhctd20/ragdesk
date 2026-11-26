@@ -1,4 +1,4 @@
-# tra-cuu-noi-bo
+# ragdesk
 
 Hệ thống hỏi–đáp tài liệu nội bộ (RAG) cho team. **Đợt 1 và 2A đã xong (trên `main`); 2C tạm dừng. Cách chạy xem `README.md`, lộ trình xem `docs/lo-trinh.md`.**
 
