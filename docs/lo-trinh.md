@@ -8,7 +8,7 @@ Mỗi đợt đều đi theo cùng một cách: bàn yêu cầu, viết thiết 
 |---|---|---|
 | 1 | Nạp PDF, Word, Excel theo thư mục; tìm kiếm hybrid (vector + từ khoá); chế độ "Chỉ nội bộ" và "AI ngoài" (Gemini); lịch sử trên trình duyệt; giao diện sáng/tối, dùng được trên điện thoại | [thiết kế](2026-11-20-thiet-ke.md), [kế hoạch](2026-11-20-ke-hoach.md) |
 | 2A | Thêm Claude và OpenAI, chọn nhà trên giao diện; hỏi nối tiếp; câu trả lời hiện dần (stream) | [thiết kế](2026-11-25-thiet-ke-dot-2a.md), [kế hoạch](2026-11-25-ke-hoach-dot-2a.md) |
-| Chất lượng tìm kiếm | Bộ đo `eval.py --corpus` (tài liệu mẫu + 44 câu); tách từ có cặp tiếng và bỏ dấu (gõ không dấu vẫn ra); ngưỡng "không liên quan" 0,81 kèm nút "Xem các đoạn gần nhất"; đọc bảng Word thành `Cột: giá trị`, ô gộp và dòng dài trong Excel; đoạn 800 ký tự; tài liệu cũ tự index lại. Trên bộ mẫu: `vitri@5` 0,77 lên 0,97, MRR 0,73 lên 0,87 | [thiết kế](2026-11-26-thiet-ke-chat-luong-tim-kiem.md), [kế hoạch](2026-11-26-ke-hoach-chat-luong-tim-kiem.md), [báo cáo](bao-cao-chat-luong-tim-kiem.md) |
+| Chất lượng tìm kiếm | Bộ đo `eval.py --corpus` (tài liệu mẫu + 44 câu); tách từ có cặp tiếng và bỏ dấu (gõ không dấu vẫn ra); ngưỡng "không liên quan" 0,81 kèm nút "Xem các đoạn gần nhất"; đọc bảng Word thành `Cột: giá trị`, ô gộp và dòng dài trong Excel; đoạn 800 ký tự; tài liệu cũ tự index lại. Trên bộ mẫu: `vitri@5` 0,77 lên 0,97, MRR 0,73 lên 0,86 | [thiết kế](2026-11-26-thiet-ke-chat-luong-tim-kiem.md), [kế hoạch](2026-11-26-ke-hoach-chat-luong-tim-kiem.md), [báo cáo](bao-cao-chat-luong-tim-kiem.md) |
 
 ## Tạm dừng
 
