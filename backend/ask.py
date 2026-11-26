@@ -2,6 +2,8 @@ import logging
 from contextlib import closing
 from collections.abc import Callable, Iterator, Mapping
 
+from rerank import has_diacritics
+
 logger = logging.getLogger(__name__)
 
 HISTORY_TURNS = 3
@@ -62,8 +64,10 @@ def ask_events(
     history = history[-HISTORY_TURNS:]
     query = question
     rewritten = None
+    parts = [question]
     if provider is None:
         query = internal_query(question, history)
+        parts += [history[-1]["question"]] if history else []
     elif turns := external_turns(history, provider):
         try:
             rewritten = rewrite(question, turns, provider, env).strip() or None
@@ -72,6 +76,9 @@ def ask_events(
         if rewritten:
             question = query = rewritten
     chunks, top = find(query, question)
+    # the model misjudges unaccented text, so a query with any unaccented part (e.g. a follow-up) is not cut
+    if not all(map(has_diacritics, parts)):
+        rerank = None
     sources, low = select_sources(query, chunks, top, min_relevance, rerank)
     yield "meta", {"sources": sources, "query": rewritten, "message": None if chunks else "Chưa có tài liệu nào",
                    "low_relevance": low}

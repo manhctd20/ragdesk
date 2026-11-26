@@ -217,3 +217,21 @@ def test_rerank_receives_search_query():
     f = Fakes()
     run(f, history=[turn("nghỉ phép năm")])  # external + history: rewrite gives "Câu viết lại?"
     assert f.rerank_calls[0][0] == "Câu viết lại?"
+
+
+def test_rerank_skipped_for_unaccented_followup():
+    f = Fakes()
+    run(f, "the ai duyet?", "internal", None, [turn("Nghỉ phép năm bao nhiêu ngày?", mode="internal", provider=None, answer=None)])
+    assert f.rerank_calls == []
+
+
+def test_rerank_skipped_when_previous_turn_unaccented():
+    f = Fakes()
+    run(f, "thế ai duyệt?", "internal", None, [turn("nghi phep nam", mode="internal", provider=None, answer=None)])
+    assert f.rerank_calls == []
+
+
+def test_rerank_called_for_accented_followup():
+    f = Fakes()
+    run(f, "thế ai duyệt?", "internal", None, [turn("nghỉ phép năm", mode="internal", provider=None, answer=None)])
+    assert [q for q, _ in f.rerank_calls] == ["nghỉ phép năm thế ai duyệt?"]

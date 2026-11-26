@@ -170,7 +170,7 @@ def main(argv: list[str]) -> int:
         i = argv.index("--min-relevance")
         min_relevance = float(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
-    rerank_min = RERANK_MIN
+    rerank_min = float(os.environ.get("RERANK_MIN") or RERANK_MIN)
     if "--rerank-min" in argv:
         i = argv.index("--rerank-min")
         rerank_min = float(argv[i + 1])

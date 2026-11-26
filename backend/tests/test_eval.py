@@ -235,3 +235,30 @@ def test_summarize_reports_avg_shown():
     rows = [ev.score(item, hits("a.pdf", "b.pdf"), 0.1, low=False), ev.score(item, hits("a.pdf"), 0.1, low=True)]
     assert [r["shown"] for r in rows] == [2, 0]
     assert ev.summarize(rows)["tong"]["so_doan_tb"] == 1.0
+
+
+def test_main_reads_rerank_min_env(tmp_path, monkeypatch):
+    class FakeReranker:
+        def __init__(self, model):
+            self.model = model
+
+        def score(self, query, texts):
+            return [-4.0] * len(texts)
+
+    got = {}
+
+    def fake_run_data_dir(questions, min_relevance, rerank_fn):
+        got["fn"] = rerank_fn
+        return None
+
+    monkeypatch.setattr(ev, "Reranker", FakeReranker)
+    monkeypatch.setattr(ev, "run_data_dir", fake_run_data_dir)
+    monkeypatch.setenv("RERANK_MODEL", "fake-model")
+    path = tmp_path / "q.json"
+    path.write_text("[]")
+    monkeypatch.setenv("RERANK_MIN", "-3")
+    ev.main(["eval.py", str(path)])
+    assert got["fn"]("nghỉ phép", hits("a.pdf")) == []  # score -4 is below the env threshold -3
+    monkeypatch.setenv("RERANK_MIN", "-5")
+    ev.main(["eval.py", str(path)])
+    assert len(got["fn"]("nghỉ phép", hits("a.pdf"))) == 1
