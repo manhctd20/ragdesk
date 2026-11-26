@@ -15,6 +15,15 @@ _BROKEN = "File hỏng, không mở được"
 _EMPTY = "File không có nội dung chữ"
 _SEPS = ("\n\n", "\n", ". ", " ")
 
+# Bump whenever the way files are read or cut changes, so old documents get re-indexed.
+INGEST_VERSION = 2
+# A row longer than this is cut. Estimate for the 512-token limit of multilingual-e5: Vietnamese
+# text tokenizes at roughly 2.5-3 characters per token, so ~1200 chars is ~400-480 tokens.
+ROW_MAX_CHARS = 1200
+# Group + column header names for Excel sheets with a merged group row. Measured: costs one
+# question and gains none on the eval corpus, so it is off (docs/bao-cao-chat-luong-tim-kiem.md, mục 3).
+GROUP_HEADER = False
+
 
 class IngestError(Exception):
     pass
@@ -71,21 +80,45 @@ def read_pdf(path) -> list[Chunk]:
     return [Chunk(part, {"page": n}) for n, t in pages for part in split(t)]
 
 
+def _is_number(text: str) -> bool:
+    return text.translate(str.maketrans("", "", " .,%-")).isdigit()
+
+
+def _table_rows(table) -> list[tuple[int, str]]:
+    grid = [[_nfc(c.text.strip()) for c in r.cells] for r in table.rows]
+    head = grid[0] if grid else []
+    is_header = (
+        len(grid) >= 2 and len(head) >= 2 and all(head)
+        and not any(_is_number(h) for h in head) and len(set(head)) == len(head)
+    )
+    if not is_header:
+        return [(n, "; ".join(c for c in row if c)) for n, row in enumerate(grid, start=1)]
+    return [(n, "; ".join(f"{h}: {c}" for h, c in zip(head, row) if c)) for n, row in enumerate(grid[1:], start=2)]
+
+
 def read_docx(path) -> list[Chunk]:
-    blocks: list[tuple[str | None, list[str]]] = [(None, [])]
+    chunks: list[Chunk] = []
+    section, lines = None, []
+
+    def flush():
+        meta = {"section": section} if section else {}
+        chunks.extend(Chunk(part, dict(meta)) for part in split("\n".join(line for line in lines if line)))
+
     for item in Document(path).iter_inner_content():
         if isinstance(item, Table):
-            blocks[-1][1].extend("; ".join(c.text.strip() for c in r.cells if c.text.strip()) for r in item.rows)
+            flush()
+            lines = []
+            for n, text in _table_rows(item):
+                meta = {"section": section, "row": n} if section else {"row": n}
+                chunks.extend(Chunk(part, dict(meta)) for part in split(text))
             continue
         text = item.text.strip()
         if item.style is not None and item.style.name.lower() in ("heading 1", "heading 2", "heading 3"):
-            blocks.append((_nfc(text), []))
-        blocks[-1][1].append(text)
-    return [
-        Chunk(part, {"section": section} if section else {})
-        for section, lines in blocks
-        for part in split("\n".join(line for line in lines if line))
-    ]
+            flush()
+            section, lines = _nfc(text), []
+        lines.append(text)
+    flush()
+    return chunks
 
 
 def _cell(value) -> str:
@@ -94,23 +127,50 @@ def _cell(value) -> str:
     return _nfc(str(value).strip()) if value is not None else ""
 
 
+def _grid(ws) -> list[list[str]]:
+    """Cell texts of a sheet; the value of a merged range is repeated on every cell it covers."""
+    grid = [[_cell(v) for v in row] for row in ws.iter_rows(values_only=True)]
+    for rng in ws.merged_cells.ranges:
+        value = _cell(ws.cell(rng.min_row, rng.min_col).value)
+        for r in range(rng.min_row, min(rng.max_row, len(grid)) + 1):
+            for c in range(rng.min_col, min(rng.max_col, len(grid[r - 1])) + 1):
+                grid[r - 1][c - 1] = value
+    return grid
+
+
+def _header(ws, grid, first: int) -> tuple[list[str], int]:
+    """Column names and the first data row. With GROUP_HEADER, a header row holding a horizontal merge
+    is a group row: it joins the row below as `Group – Column`. Otherwise the first row is the header,
+    as written (cells covered by a merge stay empty and get a column letter)."""
+    grouped = GROUP_HEADER and any(r.min_row == first and r.max_col > r.min_col for r in ws.merged_cells.ranges)
+    if grouped and first < len(grid) and any(grid[first]):
+        names = [g if g == c or not c else f"{g} – {c}" if g else c for g, c in zip(grid[first - 1], grid[first])]
+        start = first + 2
+    else:
+        names = [_cell(c.value) for c in ws[first]]
+        start = first + 1
+    return [n or get_column_letter(i) for i, n in enumerate(names, start=1)], start
+
+
 def read_xlsx(path) -> list[Chunk]:
     chunks = []
     with open(path, "rb") as f:
-        wb = load_workbook(f, read_only=True, data_only=True)
+        # not read_only: that mode drops merged-cell info
+        wb = load_workbook(f, read_only=False, data_only=True)
         try:
             for ws in wb.worksheets:
-                header = None
-                for row_no, row in enumerate(ws.iter_rows(values_only=True), start=1):
-                    cells = [_cell(v) for v in row]
+                grid = _grid(ws)
+                first = next((i for i, cells in enumerate(grid, start=1) if any(cells)), None)
+                if first is None:
+                    continue
+                header, start = _header(ws, grid, first)
+                for row_no, cells in enumerate(grid[start - 1:], start=start):
                     if not any(cells):
-                        continue
-                    if header is None:
-                        header = [c or get_column_letter(i) for i, c in enumerate(cells, start=1)]
                         continue
                     text = "; ".join(f"{header[i] if i < len(header) else get_column_letter(i + 1)}: {c}"
                                      for i, c in enumerate(cells) if c)
-                    chunks.append(Chunk(text, {"sheet": _nfc(ws.title), "row": row_no}))
+                    for part in [text] if len(text) <= ROW_MAX_CHARS else split(text, ROW_MAX_CHARS):
+                        chunks.append(Chunk(part, {"sheet": _nfc(ws.title), "row": row_no}))
         finally:
             wb.close()
     return chunks

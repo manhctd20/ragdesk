@@ -163,3 +163,53 @@ ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --min-relevance 0.8
 - **`bat_duoc` = 33%, dưới một nửa**: ngưỡng chỉ bắt được câu lạc đề hẳn (thời tiết, bóng đá, nấu ăn). Các câu cùng chủ đề công ty nhưng tài liệu không có (nghỉ kết hôn, làm thêm giờ ngày lễ, làm việc từ xa, học phí) có cosine 0,85 đến 0,89, nằm lẫn trong dải của câu có đáp án (0,83 đến 0,93). Một ngưỡng cosine không tách được hai loại này.
 - **Đề xuất cho đợt sau: làm reranker** (cross-encoder chấm lại cặp câu hỏi và đoạn) để bắt được loại "gần chủ đề nhưng không có đáp án".
 - Model `multilingual-e5-small` cho cosine dồn vào dải hẹp (0,79 đến 0,93), nên khoảng an toàn 0,02 chiếm phần đáng kể của dải. Bộ mẫu nhỏ (35 câu có đáp án, 9 câu không liên quan, dữ liệu giả); ngưỡng cần đo lại khi có dữ liệu thật.
+
+## 3. Bảng Word và Excel
+
+Thay đổi trong `backend/ingest.py` (`INGEST_VERSION = 2`):
+
+- **Bảng Word:** `_table_rows(table)` trả `(số dòng, chữ)` mỗi dòng. Dòng đầu là tiêu đề khi chắc chắn (bảng ≥ 2 dòng, ≥ 2 cột, mọi ô dòng đầu có chữ, không ô nào chỉ là số, tên cột không trùng); khi đó mỗi dòng sau thành `Cột: giá trị; …` (bỏ ô trống). Không chắc thì nối ô bằng `; ` như cũ. Mỗi dòng bảng là một đoạn riêng mang `section` của Heading chứa nó và `row` (dòng tiêu đề là 1). Đoạn văn thường không đổi.
+- **Excel:** mở bằng `read_only=False` (chế độ `read_only` không đọc được ô gộp); giá trị ô gộp áp cho mọi ô nó phủ; dòng dài hơn `ROW_MAX_CHARS = 1200` ký tự thì cắt bằng `split`, mỗi đoạn giữ `sheet` và `row`; tiêu đề hai dòng `Nhóm – Cột` khi dòng tiêu đề đầu có ô gộp ngang (cờ `GROUP_HEADER`).
+- Cách ước `ROW_MAX_CHARS`: giới hạn 512 token của e5; tiếng Việt khoảng 2,5 đến 3 ký tự mỗi token nên 1200 ký tự khoảng 400 đến 480 token, còn chừa chỗ cho tiền tố `query: `/`passage: ` và token đặc biệt.
+
+Lệnh đã chạy: `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` cho trạng thái cuối. Các tổ hợp bật/tắt từng phần đo bằng một script tạm (ngoài repo) thay `ingest._READERS["docx"|"xlsx"]` bằng bản đọc cũ ở commit trước (`git show HEAD:backend/ingest.py`) và đặt `GROUP_HEADER`/`ROW_MAX_CHARS`, rồi chạy cùng `eval.py --corpus`.
+
+**Lưu ý về nhóm `bang`:** mức tăng của phần Word một phần là do **reader nay phát ra `row`** (đáp án của các câu `bang` ghi `row` trong bảng, mà reader cũ không ghi), không chỉ do truy hồi tốt hơn. Cách đọc `Cột: giá trị` cũng giúp (đoạn bảng nhỏ, có tên cột), nhưng bộ mẫu này không tách được hai yếu tố. Đây là bằng chứng yếu về chất lượng truy hồi thuần; nó chứng minh việc ghi đúng vị trí dòng.
+
+### Tổng (35 câu có đáp án)
+
+| Tổ hợp | vitri@5 | MRR | file@1 | file@5 |
+|---|---|---|---|---|
+| Trước (mục 1 và 2, đọc cũ) | 0,86 (30/35) | 0,77 | 0,94 | 1,00 |
+| Chỉ Word mới (Excel đọc cũ) | **0,97 (34/35)** | 0,84 | 0,91 | 1,00 |
+| Chỉ Excel mới, không tiêu đề nhóm (Word đọc cũ) | 0,86 (30/35) | 0,77 | 0,91 | 1,00 |
+| Chỉ Excel mới, có tiêu đề nhóm (Word đọc cũ) | 0,83 (29/35) | 0,77 | 0,94 | 0,97 |
+| **Cả hai, không tiêu đề nhóm (trạng thái giữ)** | **0,97 (34/35)** | 0,85 | 0,91 | 1,00 |
+| Cả hai, có tiêu đề nhóm | 0,94 (33/35) | 0,86 | 0,94 | 0,97 |
+
+### Theo nhóm, vitri@5 (MRR trong ngoặc)
+
+| Nhóm | Số câu | Trước | Chỉ Word mới | Cả hai, không tiêu đề nhóm (giữ) | Cả hai, có tiêu đề nhóm |
+|---|---|---|---|---|---|
+| dung-chu | 7 | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) |
+| dien-dat-khac | 9 | 1,00 (0,91) | 1,00 (0,86) | 1,00 (0,86) | 1,00 (0,92) |
+| tu-ghep-viet-tat | 6 | 0,83 (0,71) | 1,00 (0,79) | 1,00 (0,83) | 1,00 (0,83) |
+| khong-dau | 4 | 0,75 (0,36) | 0,75 (0,36) | 0,75 (0,42) | 0,50 (0,38) |
+| bang | 6 | 0,50 (0,50) | **1,00 (0,92)** | **1,00 (0,92)** | 1,00 (0,92) |
+| hai-cot | 3 | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) |
+
+Chặn nhầm vẫn 0,00; cosine thấp nhất của câu có đáp án ở trạng thái giữ là 0,8313 (không đổi), nên ngưỡng 0,81 còn nguyên. Thời gian nạp 1,7 đến 2,3 giây, tìm trung vị 0,012 giây: không đổi.
+
+### Quyết định
+
+**Bảng Word: GIỮ.** Điểm chính 30 lên 34 (+4 câu: 3 câu `bang`, 1 câu `tu-ghep-viet-tat`), không nhóm nào mất câu. Qua quy tắc giữ/bỏ (xem lưu ý trên về nguồn gốc mức tăng).
+
+**Excel, tiêu đề hai dòng `Nhóm – Cột`: BỎ (tắt bằng `GROUP_HEADER = False`).** Với Word mới đã bật, bật tiêu đề nhóm làm điểm chính giảm 34 xuống 33 (câu không dấu `tam ung toi da bao nhieu phan tram du toan` mất đoạn đúng ở PDF vì các dòng định mức công tác phí dài thêm và chứa nhiều chữ `tối đa`) và không câu nào được thêm. Không qua quy tắc. Mã và test vẫn còn, bật lại bằng cờ khi có dữ liệu thật cần.
+
+**Excel, giá trị ô gộp + cắt dòng dài: GIỮ, nhưng không qua quy tắc theo nghĩa chặt, cần người duyệt xác nhận.** Chỉ riêng hai thay đổi này (Excel mới không tiêu đề nhóm, Word cũ): điểm chính 30 so với 30 (không tăng), MRR 0,77 so với 0,77; nội bộ `dien-dat-khac` MRR 0,91 xuống 0,86 và `tu-ghep-viet-tat` 0,71 lên 0,75, không nhóm nào mất câu. Cắt dòng dài tách riêng: MRR 0,84 lên 0,85 khi bật (cả hai ở trạng thái giữ). Lý do vẫn giữ: bộ mẫu không có câu nào thử đúng hai điểm này (ô gộp giữa dữ liệu chưa có trong mẫu, câu FAQ dài 1488 ký tự không có câu hỏi riêng), mà hai điểm sửa lỗi thật: dòng dữ liệu nằm dưới ô gộp dọc mất giá trị nếu không áp giá trị ô gộp, và dòng quá dài bị e5 cắt ngầm ở 512 token. Nếu muốn áp quy tắc tuyệt đối thì đổi `read_xlsx` về bản cũ (chỉ ảnh hưởng chuỗi chữ Excel, các test Excel mới cần gỡ theo).
+
+Còn trượt sau thay đổi (1 câu): `khong-dau` "nghi phep nam bao nhieu ngay" (đúng hai file nghỉ phép nhưng hạng 1 đến 5 toàn đoạn khác mục 1), đã nêu ở mục 1.
+
+### Tài liệu đã nạp trước đây
+
+`INGEST_VERSION = 2` chỉ là hằng số, chưa có gì dùng nó. Việc lưu phiên bản theo tài liệu và index lại file cũ là Task 8.

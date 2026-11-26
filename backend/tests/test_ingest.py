@@ -4,7 +4,7 @@ import openpyxl.xml
 import pytest
 from docx import Document
 from fpdf import FPDF
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from pypdf import PdfWriter
 
 import ingest
@@ -138,6 +138,54 @@ def test_docx_sections_tables_and_nfc(tmp_path):
     assert all(unicodedata.is_normalized("NFC", c.meta.get("section", "")) for c in chunks)
 
 
+def make_table_docx(path, rows, heading="3. Phụ cấp"):
+    d = Document()
+    d.add_heading(heading, level=1)
+    d.add_paragraph("Đoạn văn trước bảng.")
+    t = d.add_table(rows=len(rows), cols=len(rows[0]))
+    for r, row in zip(t.rows, rows):
+        for cell, text in zip(r.cells, row):
+            cell.text = text
+    d.save(path)
+    return path
+
+
+def test_docx_table_with_header_becomes_column_value(tmp_path):
+    p = make_table_docx(tmp_path / "t.docx", [
+        ["Bậc", "Hệ số", "Chức danh"],
+        ["1", "1.0", "Nhân viên"],
+        ["2", "", "Chuyên viên"],
+    ])
+    rows = ingest._table_rows(Document(p).tables[0])
+    assert rows == [(2, "Bậc: 1; Hệ số: 1.0; Chức danh: Nhân viên"), (3, "Bậc: 2; Chức danh: Chuyên viên")]
+
+
+@pytest.mark.parametrize("rows", [
+    [["Bậc", "2024"], ["1", "1.0"]],  # a header cell is only a number
+    [["Loại", "Loại"], ["a", "b"]],  # duplicate column names
+    [["Loại", ""], ["a", "b"]],  # empty header cell
+    [["Loại", "Mức"]],  # single row
+    [["Loại"], ["a"]],  # single column
+])
+def test_docx_table_without_clear_header_keeps_old_format(tmp_path, rows):
+    p = make_table_docx(tmp_path / "t.docx", rows)
+    got = ingest._table_rows(Document(p).tables[0])
+    assert got == [(n, "; ".join(c for c in row if c)) for n, row in enumerate(rows, start=1)]
+
+
+def test_docx_table_keeps_section_and_row(tmp_path):
+    p = make_table_docx(tmp_path / "t.docx", [["Bậc", "Hệ số"], ["1", "1.0"], ["2", "1.3"]])
+    chunks = ingest.ingest(p, "docx")
+    _no_none(chunks)
+    rows = [c for c in chunks if "row" in c.meta]
+    assert [(c.text, c.meta) for c in rows] == [
+        ("Bậc: 1; Hệ số: 1.0", {"section": "3. Phụ cấp", "row": 2}),
+        ("Bậc: 2; Hệ số: 1.3", {"section": "3. Phụ cấp", "row": 3}),
+    ]
+    prose = [c for c in chunks if "Đoạn văn" in c.text]
+    assert len(prose) == 1 and prose[0].meta == {"section": "3. Phụ cấp"}
+
+
 def test_read_docx_direct(tmp_path):
     chunks = ingest.read_docx(make_docx(tmp_path / "a.docx"))
     assert any(c.meta.get("section") == "4.2 Nghỉ phép" for c in chunks)
@@ -221,6 +269,105 @@ def test_xlsx_multiple_sheets_skip_empty_sheet(tmp_path):
     wb.save(p)
     chunks = ingest.ingest(p, "xlsx")
     assert [(c.text, c.meta) for c in chunks] == [("Loại: Trong nước; Mức: 500.000", {"sheet": "Công tác", "row": 2})]
+
+
+def make_merged_xlsx(path, rows, merges, title="Sheet"):
+    p = make_xlsx(path, rows, title)
+    wb = load_workbook(p)
+    for m in merges:
+        wb.active.merge_cells(m)
+    wb.save(p)
+    return p
+
+
+GROUP_ROWS = [
+    ["Đối tượng", None, "Ăn ở", None, "Ghi chú"],
+    ["Địa bàn", "Cấp bậc", "Tiền ăn", "Lưu trú", None],
+    ["Hà Nội", "Nhân viên", 300000, 200000, "Có hóa đơn"],
+]
+GROUP_MERGES = ["A1:B1", "C1:D1", "E1:E2"]
+
+
+def test_xlsx_merged_group_header_is_off_by_default(tmp_path):
+    chunks = ingest.ingest(make_merged_xlsx(tmp_path / "m.xlsx", GROUP_ROWS, GROUP_MERGES), "xlsx")
+    assert [(c.text, c.meta["row"]) for c in chunks] == [
+        ("Đối tượng: Địa bàn; B: Cấp bậc; Ăn ở: Tiền ăn; D: Lưu trú; Ghi chú: Ghi chú", 2),
+        ("Đối tượng: Hà Nội; B: Nhân viên; Ăn ở: 300000; D: 200000; Ghi chú: Có hóa đơn", 3),
+    ]
+
+
+def test_xlsx_merged_header_two_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(ingest, "GROUP_HEADER", True)
+    p = make_merged_xlsx(tmp_path / "m.xlsx", GROUP_ROWS, GROUP_MERGES)
+    chunks = ingest.ingest(p, "xlsx")
+    assert [(c.text, c.meta["row"]) for c in chunks] == [
+        ("Đối tượng – Địa bàn: Hà Nội; Đối tượng – Cấp bậc: Nhân viên; Ăn ở – Tiền ăn: 300000; "
+         "Ăn ở – Lưu trú: 200000; Ghi chú: Có hóa đơn", 3),
+    ]
+
+
+def test_xlsx_horizontal_merge_below_first_row_keeps_one_row_header(tmp_path):
+    p = make_merged_xlsx(tmp_path / "m.xlsx", [
+        ["Loại", "Mức", "Ghi chú"],
+        ["Phép năm", "12", None],
+        ["Nghỉ ốm", "Theo BHXH", None],
+    ], ["B3:C3"])
+    chunks = ingest.ingest(p, "xlsx")
+    assert [c.text for c in chunks] == [
+        "Loại: Phép năm; Mức: 12",
+        "Loại: Nghỉ ốm; Mức: Theo BHXH; Ghi chú: Theo BHXH",
+    ]
+    assert [c.meta["row"] for c in chunks] == [2, 3]
+
+
+def test_xlsx_merged_cell_in_data_repeats_value(tmp_path):
+    p = make_merged_xlsx(tmp_path / "m.xlsx", [
+        ["Địa bàn", "Cấp bậc", "Mức"],
+        ["Hà Nội", "Nhân viên", 1],
+        [None, "Trưởng phòng", 2],
+        [None, "Giám đốc", 3],
+    ], ["A2:A4"])
+    chunks = ingest.ingest(p, "xlsx")
+    assert [c.text for c in chunks] == [
+        "Địa bàn: Hà Nội; Cấp bậc: Nhân viên; Mức: 1",
+        "Địa bàn: Hà Nội; Cấp bậc: Trưởng phòng; Mức: 2",
+        "Địa bàn: Hà Nội; Cấp bậc: Giám đốc; Mức: 3",
+    ]
+    assert [c.meta["row"] for c in chunks] == [2, 3, 4]
+
+
+def test_xlsx_empty_sheet_is_skipped(tmp_path):
+    wb = Workbook()
+    wb.active.title = "Trống"
+    wb.active.merge_cells("A1:C2")  # merged range with no value must not invent text
+    ws = wb.create_sheet("Số liệu")
+    ws.append(["Loại", "Mức"])
+    ws.append(["Phép năm", "12"])
+    p = tmp_path / "e.xlsx"
+    wb.save(p)
+    chunks = ingest.ingest(p, "xlsx")
+    assert {c.meta["sheet"] for c in chunks} == {"Số liệu"}
+
+
+def test_xlsx_long_row_split_keeps_sheet_and_row(tmp_path):
+    long = _words_text(2 * ingest.ROW_MAX_CHARS)
+    p = make_xlsx(tmp_path / "l.xlsx", [
+        ["Câu hỏi", "Trả lời"],
+        ["Ngắn", "ok"],
+        ["Dài", long],
+    ])
+    chunks = ingest.ingest(p, "xlsx")
+    assert [c.text for c in chunks if c.meta["row"] == 2] == ["Câu hỏi: Ngắn; Trả lời: ok"]
+    parts = [c for c in chunks if c.meta["row"] == 3]
+    assert len(parts) >= 2
+    assert all(c.meta == {"sheet": "Nghỉ", "row": 3} for c in parts)
+    assert all(len(c.text) <= ingest.ROW_MAX_CHARS for c in parts)
+    assert parts[0].text.startswith("Câu hỏi: Dài; Trả lời: tu0 ")
+    assert "tu0" in parts[0].text and long.split()[-1] in parts[-1].text
+
+
+def test_ingest_version_is_two():
+    assert ingest.INGEST_VERSION == 2
 
 
 def test_xlsx_without_extension_is_readable(tmp_path):
