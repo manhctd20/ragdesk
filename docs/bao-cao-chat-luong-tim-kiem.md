@@ -168,7 +168,7 @@ ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --min-relevance 0.8
 
 Thay đổi trong `backend/ingest.py` (`INGEST_VERSION = 2`):
 
-- **Bảng Word:** `_table_rows(table)` trả `(số dòng, chữ)` mỗi dòng. Dòng đầu là tiêu đề khi chắc chắn (bảng ≥ 2 dòng, ≥ 2 cột, mọi ô dòng đầu có chữ, không ô nào chỉ là số, tên cột không trùng); khi đó mỗi dòng sau thành `Cột: giá trị; …` (bỏ ô trống). Không chắc thì nối ô bằng `; ` như cũ. Mỗi dòng bảng là một đoạn riêng mang `section` của Heading chứa nó và `row` (dòng tiêu đề là 1). Đoạn văn thường không đổi.
+- **Bảng Word:** `_table_rows(table)` trả `(số dòng, chữ)` mỗi dòng. Dòng đầu là tiêu đề khi chắc chắn (bảng ≥ 2 dòng, ≥ 2 cột, mọi ô dòng đầu có chữ, không ô nào chỉ là số, tên cột không trùng); khi đó mỗi dòng sau thành `Cột: giá trị; …` (bỏ ô trống), và dòng tiêu đề vẫn được nạp thêm như một đoạn thường (`row` = 1, các ô nối bằng `; `) để nhận nhầm tiêu đề không làm mất dòng 1. Không chắc thì nối ô bằng `; ` như cũ. Mỗi dòng bảng là một đoạn riêng mang `section` của Heading chứa nó và `row` (dòng tiêu đề là 1). Đoạn văn thường không đổi.
 - **Excel:** mở bằng `read_only=False` (chế độ `read_only` không đọc được ô gộp); giá trị ô gộp áp cho mọi ô nó phủ; dòng dài hơn `ROW_MAX_CHARS = 1200` ký tự thì cắt bằng `split`, mỗi đoạn giữ `sheet` và `row`; tiêu đề hai dòng `Nhóm – Cột` khi dòng tiêu đề đầu có ô gộp ngang (cờ `GROUP_HEADER`).
 - Cách ước `ROW_MAX_CHARS`: giới hạn 512 token của e5; tiếng Việt khoảng 2,5 đến 3 ký tự mỗi token nên 1200 ký tự khoảng 400 đến 480 token, còn chừa chỗ cho tiền tố `query: `/`passage: ` và token đặc biệt.
 
@@ -194,11 +194,13 @@ Lệnh đã chạy: `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python e
 | dung-chu | 7 | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) |
 | dien-dat-khac | 9 | 1,00 (0,91) | 1,00 (0,86) | 1,00 (0,86) | 1,00 (0,92) |
 | tu-ghep-viet-tat | 6 | 0,83 (0,71) | 1,00 (0,79) | 1,00 (0,83) | 1,00 (0,83) |
-| khong-dau | 4 | 0,75 (0,36) | 0,75 (0,36) | 0,75 (0,42) | 0,50 (0,38) |
+| khong-dau | 4 | 0,75 (0,36) | 0,75 (0,36) | 0,75 (0,38) | 0,50 (0,38) |
 | bang | 6 | 0,50 (0,50) | **1,00 (0,92)** | **1,00 (0,92)** | 1,00 (0,92) |
 | hai-cot | 3 | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) | 1,00 (1,00) |
 
 Chặn nhầm vẫn 0,00; cosine thấp nhất của câu có đáp án ở trạng thái giữ là 0,8313 (không đổi), nên ngưỡng 0,81 còn nguyên. Thời gian nạp 1,7 đến 2,3 giây, tìm trung vị 0,012 giây: không đổi.
+
+Cập nhật sau review (đợt sửa 1): dòng tiêu đề bảng Word nay cũng được nạp như một đoạn thường. Đo lại `eval.py --corpus` ở trạng thái giữ: tổng không đổi (34/35, MRR 0,85, file@1 0,91, file@5 1,00); chỉ `khong-dau` MRR 0,42 xuống 0,38, không nhóm nào mất câu. Hai tổ hợp còn lại trong bảng trên đo trước thay đổi này (chỉ khác số lẻ MRR, nếu có).
 
 ### Quyết định
 

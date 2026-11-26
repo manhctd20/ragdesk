@@ -157,7 +157,21 @@ def test_docx_table_with_header_becomes_column_value(tmp_path):
         ["2", "", "Chuyên viên"],
     ])
     rows = ingest._table_rows(Document(p).tables[0])
-    assert rows == [(2, "Bậc: 1; Hệ số: 1.0; Chức danh: Nhân viên"), (3, "Bậc: 2; Chức danh: Chuyên viên")]
+    assert rows == [
+        (1, "Bậc; Hệ số; Chức danh"),
+        (2, "Bậc: 1; Hệ số: 1.0; Chức danh: Nhân viên"),
+        (3, "Bậc: 2; Chức danh: Chuyên viên"),
+    ]
+
+
+def test_docx_text_only_data_first_table_still_indexes_row_one(tmp_path):
+    p = make_table_docx(tmp_path / "t.docx", [
+        ["Phép năm", "12 ngày"],
+        ["Nghỉ ốm", "Theo BHXH"],
+        ["Nghỉ cưới", "3 ngày"],
+    ])
+    chunks = ingest.ingest(p, "docx")
+    assert any(c.text == "Phép năm; 12 ngày" and c.meta["row"] == 1 for c in chunks)
 
 
 @pytest.mark.parametrize("rows", [
@@ -179,6 +193,7 @@ def test_docx_table_keeps_section_and_row(tmp_path):
     _no_none(chunks)
     rows = [c for c in chunks if "row" in c.meta]
     assert [(c.text, c.meta) for c in rows] == [
+        ("Bậc; Hệ số", {"section": "3. Phụ cấp", "row": 1}),
         ("Bậc: 1; Hệ số: 1.0", {"section": "3. Phụ cấp", "row": 2}),
         ("Bậc: 2; Hệ số: 1.3", {"section": "3. Phụ cấp", "row": 3}),
     ]

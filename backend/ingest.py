@@ -93,7 +93,10 @@ def _table_rows(table) -> list[tuple[int, str]]:
     )
     if not is_header:
         return [(n, "; ".join(c for c in row if c)) for n, row in enumerate(grid, start=1)]
-    return [(n, "; ".join(f"{h}: {c}" for h, c in zip(head, row) if c)) for n, row in enumerate(grid[1:], start=2)]
+    # the header row is kept as a plain row too: a misdetected header then loses nothing
+    return [(1, "; ".join(head))] + [
+        (n, "; ".join(f"{h}: {c}" for h, c in zip(head, row) if c)) for n, row in enumerate(grid[1:], start=2)
+    ]
 
 
 def read_docx(path) -> list[Chunk]:
