@@ -88,8 +88,10 @@ class Worker:
             os.replace(tmp, dest)
             self.rebuild_bm25(also=doc_id)  # searchable before clients see "ready"
             with self.lock:
+                old = store.get(row["replaces_id"]) if row["reindex"] else None
+                # a re-index changes nothing the user sees, so the "when" of the document stays
                 store.update(doc_id, status="ready", chunk_count=len(chunks), ingest_version=INGEST_VERSION,
-                             reindex=0)
+                             reindex=0, **({"updated_at": old["updated_at"]} if old else {}))
                 self._drop_replaced(row["replaces_id"])
         except Exception as e:
             if isinstance(e, IngestError):
@@ -168,7 +170,8 @@ class Worker:
                 tmp.unlink(missing_ok=True)
                 continue
             store.create(new, row["filename"], row["folder"], tmp.stat().st_size, row["file_type"],
-                         replaces_id=row["id"], reindex=True)
+                         replaces_id=row["id"], reindex=True,
+                         created_at=row["created_at"], updated_at=row["updated_at"])
             self.enqueue_index(new)
             count += 1
         return count

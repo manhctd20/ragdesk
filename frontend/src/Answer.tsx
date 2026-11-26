@@ -42,7 +42,7 @@ export default function Answer({ mode, result, question, provider }: Props) {
       {query && query !== question && <p className="understood">Hiểu là: {query}</p>}
       <div className="mode">
         <ModeIcon className="ic" aria-hidden="true" />
-        {external ? `AI ngoài${who}: câu trả lời tổng hợp từ các đoạn` : "Chỉ nội bộ: các đoạn liên quan nhất"}
+        {external ? `AI ngoài${who}: ${low_relevance ? "các đoạn liên quan nhất" : "câu trả lời tổng hợp từ các đoạn"}` : "Chỉ nội bộ: các đoạn liên quan nhất"}
       </div>
       {message && (
         <div className="notice">

@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from functools import lru_cache
 from pathlib import Path
 
 import chromadb
@@ -83,7 +84,10 @@ BIGRAMS = True
 UNACCENT = True
 
 
+@lru_cache(maxsize=65536)  # tokens repeat heavily across a corpus; NFD per token was the slow part
 def unaccent(text: str) -> str:
+    if text.isascii():
+        return text
     stripped = "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
     return unicodedata.normalize("NFC", stripped).replace("đ", "d").replace("Đ", "D")
 
@@ -93,7 +97,8 @@ def tokenize(text: str, *, bigrams: bool = BIGRAMS, unaccent_tokens: bool = UNAC
     if bigrams:
         tokens += [f"{a}_{b}" for a, b in zip(tokens, tokens[1:])]
     if unaccent_tokens:
-        tokens += [u for u in map(unaccent, tokens) if u not in tokens]
+        seen = set(tokens)
+        tokens += [u for u in map(unaccent, tokens) if u not in seen]
     return tokens
 
 

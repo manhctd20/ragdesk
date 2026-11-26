@@ -64,6 +64,9 @@ Cách đọc file có số phiên bản (`INGEST_VERSION` trong `backend/ingest.
 - Trong lúc chờ, bản cũ vẫn tìm được; xong thì thay bằng bản mới.
 - Index lại lỗi thì giữ bản cũ và ghi cảnh báo vào log (`re-index of doc ... failed`).
 - Dòng log `queued N documents for re-index` cho biết có bao nhiêu file được xếp hàng. Nhiều file thì lần đầu sẽ chậm (CPU).
+- **Ổ đĩa:** mỗi file được chép sang `DATA_DIR/files/.tmp/` trước khi index, nên cần chỗ trống xấp xỉ **tổng dung lượng các file đã lưu** (xong file nào thì file `.tmp` đó được thay vào chỗ cũ).
+- **RAM:** index lại chạy cùng lúc với tìm kiếm, mỗi lần lại dựng lại chỉ mục BM25 trên cả kho đoạn. Cần RAM đủ cho model embedding cộng chỉ mục đó; file Excel lớn hơn 2 MB được đọc ở chế độ tiết kiệm RAM (không lặp giá trị ô gộp). Nếu máy chủ bị kill vì hết RAM thì lần khởi động sau sẽ xếp hàng lại đúng file đó, nên hãy tăng RAM hoặc bỏ file lớn ra trước.
+- Ngày tải lên và ngày cập nhật của tài liệu được giữ nguyên qua lần index lại.
 
 ## Dữ liệu và sao lưu
 

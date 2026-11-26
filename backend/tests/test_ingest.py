@@ -351,6 +351,35 @@ def test_xlsx_merged_cell_in_data_repeats_value(tmp_path):
     assert [c.meta["row"] for c in chunks] == [2, 3, 4]
 
 
+def test_xlsx_large_file_uses_read_only_reader_without_merge_fill(tmp_path, monkeypatch):
+    p = make_merged_xlsx(tmp_path / "big.xlsx", [
+        ["Địa bàn", "Cấp bậc", "Mức"],
+        ["Hà Nội", "Nhân viên", 1],
+        [None, "Trưởng phòng", 2],
+        [None, None, None],
+        ["Huế", "Giám đốc", 3],
+    ], ["A2:A3"])
+    modes = []
+    real = ingest.load_workbook
+    monkeypatch.setattr(ingest, "load_workbook", lambda f, **kw: modes.append(kw["read_only"]) or real(f, **kw))
+    monkeypatch.setattr(ingest, "XLSX_MERGE_MAX_BYTES", 10)
+    chunks = ingest.ingest(p, "xlsx")
+    assert modes == [True]
+    assert [(c.text, c.meta["row"]) for c in chunks] == [  # merged value is not repeated, as before the merge fill
+        ("Địa bàn: Hà Nội; Cấp bậc: Nhân viên; Mức: 1", 2),
+        ("Cấp bậc: Trưởng phòng; Mức: 2", 3),
+        ("Địa bàn: Huế; Cấp bậc: Giám đốc; Mức: 3", 5),
+    ]
+
+
+def test_xlsx_small_file_still_uses_full_reader(tmp_path, monkeypatch):
+    modes = []
+    real = ingest.load_workbook
+    monkeypatch.setattr(ingest, "load_workbook", lambda f, **kw: modes.append(kw["read_only"]) or real(f, **kw))
+    ingest.ingest(make_xlsx(tmp_path / "s.xlsx", [["A"], ["x"]]), "xlsx")
+    assert modes == [False]
+
+
 def test_xlsx_empty_sheet_is_skipped(tmp_path):
     wb = Workbook()
     wb.active.title = "Trống"

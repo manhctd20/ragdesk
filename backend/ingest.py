@@ -1,3 +1,4 @@
+import os
 import unicodedata
 from pathlib import Path
 from typing import NamedTuple
@@ -21,9 +22,15 @@ INGEST_VERSION = 3
 # (docs/bao-cao-chat-luong-tim-kiem.md, mục 4 và 5). Overlap is 20% of the chunk size.
 CHUNK_SIZE = 800
 PDF_MODE = "plain"
-# A row longer than this is cut. Estimate for the 512-token limit of multilingual-e5: Vietnamese
-# text tokenizes at roughly 2.5-3 characters per token, so ~1200 chars is ~400-480 tokens.
-ROW_MAX_CHARS = 1200
+# A row longer than this is cut. Measured against the 512-token limit of multilingual-e5: a 1200-char
+# numeric row is already 512 tokens (truncated), prose is ~299 tokens; 900 keeps numeric rows under it.
+ROW_MAX_CHARS = 900
+# Merged-cell fill needs the full (not read_only) reader, which holds the whole sheet in memory:
+# measured 8.1 MB / 150k rows -> 748 MB and 21 s, against 77 MB for read_only. Above this size the
+# file is read read_only and merged values are not repeated.
+# ponytail: 2 MB is ~200 MB peak, fine next to the embedding model; a big file with merged cells loses
+# the repeat. Upgrade path: read <mergeCells> from the sheet XML via zipfile and keep read_only always.
+XLSX_MERGE_MAX_BYTES = 2 * 1024 * 1024
 # Group + column header names for Excel sheets with a merged group row. Measured: costs one
 # question and gains none on the eval corpus, so it is off (docs/bao-cao-chat-luong-tim-kiem.md, mục 3).
 GROUP_HEADER = False
@@ -136,10 +143,10 @@ def _cell(value) -> str:
     return _nfc(str(value).strip()) if value is not None else ""
 
 
-def _grid(ws) -> list[list[str]]:
-    """Cell texts of a sheet; the value of a merged range is repeated on every cell it covers."""
+def _grid(ws, merges: bool = True) -> list[list[str]]:
+    """Cell texts of a sheet; the value of a merged range is repeated on every cell it covers (merges=False: not)."""
     grid = [[_cell(v) for v in row] for row in ws.iter_rows(values_only=True)]
-    for rng in ws.merged_cells.ranges:
+    for rng in ws.merged_cells.ranges if merges else ():
         value = _cell(ws.cell(rng.min_row, rng.min_col).value)
         for r in range(rng.min_row, min(rng.max_row, len(grid)) + 1):
             for c in range(rng.min_col, min(rng.max_col, len(grid[r - 1])) + 1):
@@ -147,16 +154,16 @@ def _grid(ws) -> list[list[str]]:
     return grid
 
 
-def _header(ws, grid, first: int) -> tuple[list[str], int]:
+def _header(ws, grid, first: int, merges: bool = True) -> tuple[list[str], int]:
     """Column names and the first data row. With GROUP_HEADER, a header row holding a horizontal merge
     is a group row: it joins the row below as `Group – Column`. Otherwise the first row is the header,
     as written (cells covered by a merge stay empty and get a column letter)."""
-    grouped = GROUP_HEADER and any(r.min_row == first and r.max_col > r.min_col for r in ws.merged_cells.ranges)
+    grouped = GROUP_HEADER and merges and any(r.min_row == first and r.max_col > r.min_col for r in ws.merged_cells.ranges)
     if grouped and first < len(grid) and any(grid[first]):
         names = [g if g == c or not c else f"{g} – {c}" if g else c for g, c in zip(grid[first - 1], grid[first])]
         start = first + 2
     else:
-        names = [_cell(c.value) for c in ws[first]]
+        names = [_cell(c.value) for c in ws[first]] if merges else grid[first - 1]
         start = first + 1
     return [n or get_column_letter(i) for i, n in enumerate(names, start=1)], start
 
@@ -164,15 +171,15 @@ def _header(ws, grid, first: int) -> tuple[list[str], int]:
 def read_xlsx(path) -> list[Chunk]:
     chunks = []
     with open(path, "rb") as f:
-        # not read_only: that mode drops merged-cell info
-        wb = load_workbook(f, read_only=False, data_only=True)
+        merges = os.path.getsize(path) <= XLSX_MERGE_MAX_BYTES  # read_only drops merged-cell info
+        wb = load_workbook(f, read_only=not merges, data_only=True)
         try:
             for ws in wb.worksheets:
-                grid = _grid(ws)
+                grid = _grid(ws, merges)
                 first = next((i for i, cells in enumerate(grid, start=1) if any(cells)), None)
                 if first is None:
                     continue
-                header, start = _header(ws, grid, first)
+                header, start = _header(ws, grid, first, merges)
                 for row_no, cells in enumerate(grid[start - 1:], start=start):
                     if not any(cells):
                         continue

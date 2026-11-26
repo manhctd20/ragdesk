@@ -180,3 +180,13 @@ def test_create_reindex_row_is_hidden_from_list_and_folders():
     assert [r["id"] for r in store.list(folder="A")] == ["old"]
     assert store.folders() == [{"name": "A", "count": 1}]
     assert [r["id"] for r in store.list_indexing()] == ["re"]
+
+
+def test_create_accepts_explicit_dates_and_update_keeps_explicit_updated_at():
+    _new("d1", created_at="2026-01-01T00:00:00+00:00", updated_at="2026-02-01T00:00:00+00:00")
+    row = store.get("d1")
+    assert (row["created_at"], row["updated_at"]) == ("2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00")
+    store.update("d1", status="ready", updated_at="2026-02-01T00:00:00+00:00")
+    assert store.get("d1")["updated_at"] == "2026-02-01T00:00:00+00:00"
+    store.update("d1", chunk_count=1)  # without it, updated_at moves on as before
+    assert store.get("d1")["updated_at"] > "2026-02-01T00:00:00+00:00"

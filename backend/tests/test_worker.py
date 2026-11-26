@@ -513,6 +513,20 @@ def test_reindex_outdated_swaps_in_new_chunks(env, tmp_path):
     assert [r["id"] for r in store.list()] == [new]
 
 
+def test_reindex_keeps_dates_and_list_order(env, tmp_path):
+    a = make_outdated(env, xlsx_bytes(tmp_path, 2, prefix="A"), filename="a.xlsx")
+    b = make_outdated(env, xlsx_bytes(tmp_path, 2, prefix="B"), filename="b.xlsx")
+    before = [(r["filename"], r["created_at"], r["updated_at"]) for r in store.list()]
+    assert [f for f, _, _ in before] == ["b.xlsx", "a.xlsx"]  # newest first
+
+    assert env.worker.reindex_outdated() == 2
+    for kind, new in queued(env.worker):
+        env.worker.run_job(kind, new)
+
+    assert {a, b}.isdisjoint(r["id"] for r in store.list())
+    assert [(r["filename"], r["created_at"], r["updated_at"]) for r in store.list()] == before
+
+
 def test_reindex_failure_keeps_old_and_hides_error(env, tmp_path, caplog):
     data = xlsx_bytes(tmp_path, 40, prefix="Cũ")
     old = make_outdated(env, data, version=INGEST_VERSION - 1)

@@ -169,8 +169,8 @@ ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --min-relevance 0.8
 Thay đổi trong `backend/ingest.py` (lúc đo `INGEST_VERSION = 2`; nay là 3 sau mục 5):
 
 - **Bảng Word:** `_table_rows(table)` trả `(số dòng, chữ)` mỗi dòng. Dòng đầu là tiêu đề khi chắc chắn (bảng ≥ 2 dòng, ≥ 2 cột, mọi ô dòng đầu có chữ, không ô nào chỉ là số, tên cột không trùng); khi đó mỗi dòng sau thành `Cột: giá trị; …` (bỏ ô trống), và dòng tiêu đề vẫn được nạp thêm như một đoạn thường (`row` = 1, các ô nối bằng `; `) để nhận nhầm tiêu đề không làm mất dòng 1. Không chắc thì nối ô bằng `; ` như cũ. Mỗi dòng bảng là một đoạn riêng mang `section` của Heading chứa nó và `row` (dòng tiêu đề là 1). Đoạn văn thường không đổi.
-- **Excel:** mở bằng `read_only=False` (chế độ `read_only` không đọc được ô gộp); giá trị ô gộp áp cho mọi ô nó phủ; dòng dài hơn `ROW_MAX_CHARS = 1200` ký tự thì cắt bằng `split`, mỗi đoạn giữ `sheet` và `row`; tiêu đề hai dòng `Nhóm – Cột` khi dòng tiêu đề đầu có ô gộp ngang (cờ `GROUP_HEADER`).
-- Cách ước `ROW_MAX_CHARS`: giới hạn 512 token của e5; tiếng Việt khoảng 2,5 đến 3 ký tự mỗi token nên 1200 ký tự khoảng 400 đến 480 token, còn chừa chỗ cho tiền tố `query: `/`passage: ` và token đặc biệt.
+- **Excel:** file nhỏ (từ `XLSX_MERGE_MAX_BYTES` = 2 MB trở xuống) mở bằng `read_only=False` (chế độ `read_only` không đọc được ô gộp); giá trị ô gộp áp cho mọi ô nó phủ. File lớn hơn mở bằng `read_only=True` và không lặp giá trị ô gộp (như trước đợt này), vì chế độ đầy đủ ngốn RAM: đo 1 file 8,1 MB / 150 nghìn dòng mất 748 MB và 21 giây, so với 77 MB của `read_only`, đủ để máy chủ bị kill và lặp vòng index lại khi khởi động. Dòng dài hơn `ROW_MAX_CHARS = 900` ký tự thì cắt bằng `split`, mỗi đoạn giữ `sheet` và `row`; tiêu đề hai dòng `Nhóm – Cột` khi dòng tiêu đề đầu có ô gộp ngang (cờ `GROUP_HEADER`).
+- Cách chọn `ROW_MAX_CHARS`: giới hạn 512 token của e5. Ước ban đầu 1200 ký tự (tiếng Việt khoảng 2,5 đến 3 ký tự mỗi token) hóa ra chỉ đúng với chữ thường: đo thực tế, một dòng toàn số dài 1200 ký tự đã là 512 token (vẫn bị cắt ngầm), còn văn xuôi khoảng 299 token. Hạ xuống **900** (đợt sửa sau review cuối; `INGEST_VERSION` 3 chưa phát hành nên không tăng phiên bản). Đã chạy lại `eval.py --corpus` một lần để xác nhận: vitri@5 0,97 (34/35), file@1 0,94, file@5 1,00 và ngưỡng không đổi; MRR tổng 0,87 xuống 0,86 (dien-dat-khac 0,92 xuống 0,91, tu-ghep-viet-tat 0,83 xuống 0,79), không nhóm nào mất câu.
 
 Lệnh đã chạy: `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` cho trạng thái cuối. Các tổ hợp bật/tắt từng phần đo bằng một script tạm (ngoài repo) thay `ingest._READERS["docx"|"xlsx"]` bằng bản đọc cũ ở commit trước (`git show HEAD:backend/ingest.py`) và đặt `GROUP_HEADER`/`ROW_MAX_CHARS`, rồi chạy cùng `eval.py --corpus`.
 
@@ -246,7 +246,7 @@ Nhìn vào chữ rút ra: ở chế độ `layout`, hai cột được xếp c�
 
 **Bằng chứng hẹp.** Trong bộ mẫu chỉ hai đoạn văn đủ dài để cắt khác nhau giữa 500 và 800 ký tự (Điều 12 của nội quy và trang 4 của `quy-trinh-thanh-toan.pdf`), nên 500 so với 800 chỉ khác hạng ở 2 câu. 300 cắt nhiều văn bản hơn nên khác ở 4 câu. Đủ để không có lý do đổi, chưa đủ để kết luận kích thước tốt nhất cho tài liệu thật.
 
-Thay đổi: `ingest(path, file_type, *, chunk_size=CHUNK_SIZE, pdf_mode=PDF_MODE)`; độ chồng lấn `round(chunk_size * 0.2)` (500 cho ra 100 như cũ). `chunk_size` được dùng cho chữ PDF, chữ thường của Word và các dòng bảng Word; dòng Excel dài vẫn cắt theo `ROW_MAX_CHARS` (1200, chồng lấn 100). `eval.py` thêm cờ `--chunk-size`.
+Thay đổi: `ingest(path, file_type, *, chunk_size=CHUNK_SIZE, pdf_mode=PDF_MODE)`; độ chồng lấn `round(chunk_size * 0.2)` (500 cho ra 100 như cũ). `chunk_size` được dùng cho chữ PDF, chữ thường của Word và các dòng bảng Word; dòng Excel dài vẫn cắt theo `ROW_MAX_CHARS` (lúc đó 1200, nay 900, chồng lấn 100). `eval.py` thêm cờ `--chunk-size`.
 
 Lệnh đã chạy (`--pdf-mode` mặc định plain):
 
@@ -277,7 +277,7 @@ Lần chạy xác nhận mặc định đã đổi (`cd backend && ANONYMIZED_TE
 
 ## 6. Kết luận
 
-Số đo cuối lấy từ một lần chạy mới `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` (cùng bộ mẫu: 44 câu, 35 có đáp án, 9 không liên quan; dữ liệu giả).
+Số đo cuối lấy từ một lần chạy mới `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` (chạy lại sau khi hạ `ROW_MAX_CHARS` xuống 900) (cùng bộ mẫu: 44 câu, 35 có đáp án, 9 không liên quan; dữ liệu giả).
 
 ### Cấu hình cuối
 
@@ -286,7 +286,7 @@ Số đo cuối lấy từ một lần chạy mới `cd backend && ANONYMIZED_TE
 | Tách từ | cặp tiếng + bỏ dấu, `BIGRAMS = True`, `UNACCENT = True` | `backend/search.py` | 1 |
 | Ngưỡng không liên quan | `MIN_RELEVANCE = 0.81` (cosine nhánh vector; biến môi trường `MIN_RELEVANCE` ghi đè) | `backend/ask.py` | 2 |
 | Bảng Word | dòng `Cột: giá trị` kèm mục và số dòng; dòng tiêu đề vẫn nạp như đoạn thường | `backend/ingest.py` | 3 |
-| Excel | lặp giá trị ô gộp; cắt dòng dài hơn `ROW_MAX_CHARS = 1200`; tiêu đề hai dòng tắt (`GROUP_HEADER = False`) | `backend/ingest.py` | 3 |
+| Excel | lặp giá trị ô gộp; cắt dòng dài hơn `ROW_MAX_CHARS = 900`; file trên 2 MB đọc `read_only` nên không lặp ô gộp; tiêu đề hai dòng tắt (`GROUP_HEADER = False`) | `backend/ingest.py` | 3 |
 | PDF | `PDF_MODE = "plain"` | `backend/ingest.py` | 4 |
 | Kích thước đoạn | `CHUNK_SIZE = 800` | `backend/ingest.py` | 5 |
 | Phiên bản đọc file | `INGEST_VERSION = 3`; tài liệu cũ hơn tự index lại khi khởi động | `backend/ingest.py`, `backend/worker.py` | 5 |
@@ -298,7 +298,7 @@ Tài liệu đã nạp bằng phiên bản cũ: khi máy chủ khởi động, m
 | Chỉ số | Ban đầu (mục 0) | Cuối |
 |---|---|---|
 | vitri@5 (35 câu có đáp án) | 0,77 (27/35) | **0,97 (34/35)** |
-| MRR | 0,73 | **0,87** |
+| MRR | 0,73 | **0,86** |
 | file@1 | 0,89 | 0,94 |
 | file@5 | 0,91 | **1,00** |
 | khong-dau vitri@5 | 0/4 | **3/4** |

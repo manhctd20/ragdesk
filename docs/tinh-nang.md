@@ -18,7 +18,7 @@ Mô tả đầy đủ những gì hệ thống đang làm được (đến đợ
 **Cách đọc file**
 - PDF: theo trang, giữ số trang.
 - Word: theo đoạn văn, giữ tiêu đề mục gần nhất (Heading 1–3). **Mỗi dòng của bảng là một đoạn riêng**, ghi kèm mục chứa bảng và số dòng. Nếu dòng đầu chắc chắn là tiêu đề cột thì các dòng sau đọc dạng `Cột: giá trị; Cột: giá trị` (bỏ ô trống); dòng tiêu đề vẫn được nạp thêm như một đoạn thường. Không chắc là tiêu đề thì nối các ô bằng `; `.
-- Excel: mỗi sheet lấy dòng đầu có dữ liệu làm tên cột. **Mỗi dòng sau đó thành một đoạn** dạng `Cột A: giá trị; Cột B: giá trị`, kèm tên sheet và số dòng. Lấy giá trị đã tính, không lấy công thức. Ô gộp: giá trị được áp cho mọi ô nó phủ. Dòng dài hơn 1200 ký tự được cắt thành nhiều đoạn, mỗi đoạn giữ sheet và số dòng.
+- Excel: mỗi sheet lấy dòng đầu có dữ liệu làm tên cột. **Mỗi dòng sau đó thành một đoạn** dạng `Cột A: giá trị; Cột B: giá trị`, kèm tên sheet và số dòng. Lấy giá trị đã tính, không lấy công thức. Ô gộp: giá trị được áp cho mọi ô nó phủ (file lớn hơn 2 MB thì bỏ qua bước này để tiết kiệm RAM). Dòng dài hơn 900 ký tự được cắt thành nhiều đoạn, mỗi đoạn giữ sheet và số dòng.
 - PDF và chữ thường của Word được cắt thành đoạn khoảng 800 ký tự, chồng lấn khoảng 160.
 
 **Tìm kiếm**

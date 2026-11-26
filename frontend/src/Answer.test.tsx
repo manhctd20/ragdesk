@@ -133,6 +133,12 @@ describe("Answer", () => {
       expect(container.querySelector(".chip")).toBeNull();
     });
 
+    it("external: label does not promise a synthesized answer", () => {
+      show("external", result({ low_relevance: true, sources: [src(1)] }), { provider: "claude" });
+      expect(screen.getByText("AI ngoài (Claude): các đoạn liên quan nhất")).toBeInTheDocument();
+      expect(screen.queryByText(/câu trả lời tổng hợp/)).toBeNull();
+    });
+
     it("old turns without low_relevance render as before", () => {
       show("internal", result({ sources: [src(1, {}, { filename: "Gan1.pdf" })] }));
       expect(screen.queryByText(NOTICE)).toBeNull();

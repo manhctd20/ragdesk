@@ -12,7 +12,7 @@ _COLUMNS = (
 )
 # Columns added after the first release: DDL only, old rows get the default (NULL ingest_version = outdated).
 _ADDED = (("ingest_version", "INTEGER"), ("reindex", "INTEGER NOT NULL DEFAULT 0"))
-_UPDATABLE = frozenset(_COLUMNS) - {"id", "created_at", "updated_at"}
+_UPDATABLE = frozenset(_COLUMNS) - {"id", "created_at"}
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 
@@ -65,12 +65,13 @@ def _write(sql: str, args: tuple = ()) -> None:
 
 
 def create(id: str, filename: str, folder: str, size_bytes: int, file_type: str,
-           replaces_id: str | None = None, reindex: bool = False) -> dict:
+           replaces_id: str | None = None, reindex: bool = False,
+           created_at: str | None = None, updated_at: str | None = None) -> dict:
     now = _now()
     _write(
         "INSERT INTO documents (id, filename, folder, size_bytes, file_type, status, replaces_id, reindex,"
         " created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'indexing', ?, ?, ?, ?)",
-        (id, filename, folder, size_bytes, file_type, replaces_id, int(reindex), now, now),
+        (id, filename, folder, size_bytes, file_type, replaces_id, int(reindex), created_at or now, updated_at or now),
     )
     return get(id)
 
@@ -97,7 +98,7 @@ def update(id: str, **fields) -> None:
     bad = set(fields) - _UPDATABLE
     if bad:
         raise ValueError(f"unknown columns: {sorted(bad)}")
-    fields["updated_at"] = _now()
+    fields.setdefault("updated_at", _now())  # a caller may pass one to keep it (re-index keeps the old row's)
     sets = ", ".join(f"{c} = ?" for c in fields)
     _write(f"UPDATE documents SET {sets} WHERE id = ?", (*fields.values(), id))
 

@@ -320,3 +320,26 @@ def test_retrieve_bm25_only_hit_has_no_similarity(index):
 
 def test_retrieve_empty_index(index):
     assert retrieve("q", ExplodingEmbedder(), index, Bm25Holder()) == ([], None)
+
+
+def _tokenize_reference(text, bigrams, unaccent_tokens):
+    """The first implementation (list membership, uncached unaccent): the output the fast one must match."""
+    tokens = re.findall(r"\w+", unicodedata.normalize("NFC", text).lower())
+    if bigrams:
+        tokens += [f"{a}_{b}" for a, b in zip(tokens, tokens[1:])]
+    if unaccent_tokens:
+        tokens += [u for u in map(unaccent, tokens) if u not in tokens]
+    return tokens
+
+
+@pytest.mark.parametrize("text", [
+    "Nghỉ phép năm, nghi phep nam; Đề nghị đường dây",
+    "vpn VPN Vpn 12 12_3 đ Đ",
+    unicodedata.normalize("NFD", "Quy định nghỉ phép"),
+    "?", "", "a a a a",
+])
+@pytest.mark.parametrize("bigrams", [True, False])
+@pytest.mark.parametrize("unaccent_tokens", [True, False])
+def test_tokenize_output_identical_to_first_implementation(text, bigrams, unaccent_tokens):
+    assert tokenize(text, bigrams=bigrams, unaccent_tokens=unaccent_tokens) == _tokenize_reference(
+        text, bigrams, unaccent_tokens)
