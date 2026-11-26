@@ -267,6 +267,8 @@ Câu đổi hạng (so với 500, hạng của đoạn đúng):
 
 Chặn nhầm vẫn 0,00, cosine thấp nhất của câu có đáp án vẫn 0,8313 ở cả ba mức (ngưỡng 0,81 còn nguyên). Thời gian nạp 1,7 đến 1,9 giây.
 
-**Quyết định: GIỮ `CHUNK_SIZE = 500`.** Không mức nào làm điểm chính tăng được 1 câu (đều 34/35), nên không qua quy tắc đổi. 800 có MRR cao hơn 0,02 nhưng đó là hạng của 2 câu trên hai đoạn dài, không đủ để bắt tài liệu cũ phải index lại. 300 làm câu `hai-cot` xuống hạng 5 (vẫn trong top 5, nên chưa mất theo vitri@5) và cho thấy đoạn ngắn tách mất ngữ cảnh. Nếu sau này có tài liệu thật dài, đo lại bằng `--chunk-size`.
+**Quyết định (sau phán quyết của người điều phối): ĐỔI `CHUNK_SIZE = 800`, `INGEST_VERSION` lên 3.** Quy tắc ràng buộc nói `MRR` phân xử khi `vitri@5` bằng nhau, và Task 3 đã giữ `BIGRAMS = True` đúng theo cách đó (vitri@5 bằng nhau, MRR 0,769 so với 0,754), nên áp dụng giống hệt ở đây. 300 và 800 bằng nhau về `vitri@5` (34/35) và MRR (0,87), cùng cao hơn 500 (0,85). Giữa 300 và 800, chọn 800 vì `file@1` 0,94 so với 0,91 và không làm xấu `hai-cot`, trong khi 300 đẩy câu "hệ thống ERP bảo trì lúc mấy giờ" xuống hạng 5. Chi phí index lại tài liệu cũ do Task 8 xử lý (đó là việc của `INGEST_VERSION`). Vẫn là bằng chứng hẹp: mức tăng đến từ hạng của 2 câu trên 2 đoạn văn dài, nên khi có tài liệu thật dài cần đo lại bằng `--chunk-size`.
 
-**`INGEST_VERSION` giữ 2** vì `PDF_MODE` và `CHUNK_SIZE` không đổi; tài liệu đã nạp không cần index lại do Task 7.
+Lần chạy xác nhận mặc định đã đổi (`cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus`, không cờ): tổng vitri@5 0,97 (34/35), MRR 0,87, file@1 0,94, file@5 1,00; dien-dat-khac MRR 0,92, hai-cot 1,00 (MRR 1,00), khong-dau 0,75 (MRR 0,38), bang 1,00 (MRR 0,92). Khớp cột 800 ở bảng trên.
+
+**`INGEST_VERSION = 3`** vì cách cắt đoạn đổi; tài liệu nạp với phiên bản 2 cần index lại (Task 8). `PDF_MODE` vẫn `"plain"`.

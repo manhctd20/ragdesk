@@ -381,8 +381,8 @@ def test_xlsx_long_row_split_keeps_sheet_and_row(tmp_path):
     assert "tu0" in parts[0].text and long.split()[-1] in parts[-1].text
 
 
-def test_ingest_version_is_two():
-    assert ingest.INGEST_VERSION == 2
+def test_ingest_version_is_three():
+    assert ingest.INGEST_VERSION == 3
 
 
 def test_xlsx_without_extension_is_readable(tmp_path):
@@ -428,7 +428,7 @@ def _words_text(n_chars):
 
 def test_split_long_text_bounded_and_overlapping():
     text = _words_text(1200)
-    parts = ingest.split(text)
+    parts = ingest.split(text, 500)
     assert len(parts) >= 3
     assert all(len(p) <= 500 for p in parts)
     for prev, nxt in zip(parts, parts[1:]):
@@ -441,7 +441,7 @@ def test_split_cuts_at_paragraph_break_first():
     p1 = ". ".join(f"Đoạn một câu {i} về nghỉ phép" for i in range(10)) + "."
     p2 = ". ".join(f"Đoạn hai câu {i} về công tác" for i in range(10)) + "."
     assert 250 < len(p1) < 400 and 250 < len(p2) < 400
-    parts = ingest.split(p1 + "\n\n" + p2)
+    parts = ingest.split(p1 + "\n\n" + p2, 500)
     assert len(parts) == 2
     assert parts[0] == p1
     assert parts[1].endswith(p2)
@@ -449,13 +449,13 @@ def test_split_cuts_at_paragraph_break_first():
 
 def test_split_long_vietnamese_sentences_bounded_nfc():
     para = ". ".join(f"Câu số {i} nói về nghỉ phép năm" for i in range(30))
-    parts = ingest.split(para + "\n\n" + para)
+    parts = ingest.split(para + "\n\n" + para, 500)
     assert all(len(p) <= 500 for p in parts)
     assert all(unicodedata.is_normalized("NFC", p) for p in parts)
 
 
 def test_split_without_separators_still_bounded():
-    parts = ingest.split("x" * 1200)
+    parts = ingest.split("x" * 1200, 500)
     assert all(len(p) <= 500 for p in parts)
     assert sum(len(p) for p in parts) >= 1200
 
@@ -507,6 +507,6 @@ def test_read_pdf_layout_mode_runs(tmp_path):
 
 
 def test_ingest_defaults_unchanged(tmp_path):
-    assert (ingest.CHUNK_SIZE, ingest.PDF_MODE) == (500, "plain")
+    assert (ingest.CHUNK_SIZE, ingest.PDF_MODE) == (800, "plain")
     path = make_pdf(tmp_path / "a.pdf", pages=(LONG_PROSE,))
-    assert ingest.ingest(path, "pdf") == ingest.ingest(path, "pdf", chunk_size=500, pdf_mode="plain")
+    assert ingest.ingest(path, "pdf") == ingest.ingest(path, "pdf", chunk_size=800, pdf_mode="plain")

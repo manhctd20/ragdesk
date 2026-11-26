@@ -16,10 +16,10 @@ _EMPTY = "File không có nội dung chữ"
 _SEPS = ("\n\n", "\n", ". ", " ")
 
 # Bump whenever the way files are read or cut changes, so old documents get re-indexed.
-INGEST_VERSION = 2
+INGEST_VERSION = 3
 # Chunk size in characters and PDF text extraction mode ("plain" or "layout"), chosen by measurement
 # (docs/bao-cao-chat-luong-tim-kiem.md, mục 4 và 5). Overlap is 20% of the chunk size.
-CHUNK_SIZE = 500
+CHUNK_SIZE = 800
 PDF_MODE = "plain"
 # A row longer than this is cut. Estimate for the 512-token limit of multilingual-e5: Vietnamese
 # text tokenizes at roughly 2.5-3 characters per token, so ~1200 chars is ~400-480 tokens.
