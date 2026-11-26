@@ -166,7 +166,7 @@ ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus --min-relevance 0.8
 
 ## 3. Bảng Word và Excel
 
-Thay đổi trong `backend/ingest.py` (`INGEST_VERSION = 2`):
+Thay đổi trong `backend/ingest.py` (lúc đo `INGEST_VERSION = 2`; nay là 3 sau mục 5):
 
 - **Bảng Word:** `_table_rows(table)` trả `(số dòng, chữ)` mỗi dòng. Dòng đầu là tiêu đề khi chắc chắn (bảng ≥ 2 dòng, ≥ 2 cột, mọi ô dòng đầu có chữ, không ô nào chỉ là số, tên cột không trùng); khi đó mỗi dòng sau thành `Cột: giá trị; …` (bỏ ô trống), và dòng tiêu đề vẫn được nạp thêm như một đoạn thường (`row` = 1, các ô nối bằng `; `) để nhận nhầm tiêu đề không làm mất dòng 1. Không chắc thì nối ô bằng `; ` như cũ. Mỗi dòng bảng là một đoạn riêng mang `section` của Heading chứa nó và `row` (dòng tiêu đề là 1). Đoạn văn thường không đổi.
 - **Excel:** mở bằng `read_only=False` (chế độ `read_only` không đọc được ô gộp); giá trị ô gộp áp cho mọi ô nó phủ; dòng dài hơn `ROW_MAX_CHARS = 1200` ký tự thì cắt bằng `split`, mỗi đoạn giữ `sheet` và `row`; tiêu đề hai dòng `Nhóm – Cột` khi dòng tiêu đề đầu có ô gộp ngang (cờ `GROUP_HEADER`).
@@ -214,13 +214,15 @@ Còn trượt sau thay đổi (1 câu): `khong-dau` "nghi phep nam bao nhieu nga
 
 ### Tài liệu đã nạp trước đây
 
-`INGEST_VERSION = 2` chỉ là hằng số, chưa có gì dùng nó. Việc lưu phiên bản theo tài liệu và index lại file cũ là Task 8.
+Lúc đo mục này, `INGEST_VERSION` chỉ là hằng số, chưa có gì dùng nó. Sau đó mỗi tài liệu được lưu phiên bản đã đọc, và khi khởi động máy chủ tự index lại tài liệu có phiên bản cũ hơn (xem mục 6).
 
 ## 4. PDF hai cột
 
 **Bằng chứng yếu.** Người dùng không có PDF hai cột thật, nên `ban-tin-noi-bo-hai-cot.pdf` do `make_corpus.py` tự tạo bằng `fpdf2`, ghi hết cột trái rồi mới sang cột phải (đúng thứ tự Word và LibreOffice khi xuất PDF). Chỉ 3 câu thuộc nhóm `hai-cot`, cả hai chế độ đều đã đạt tối đa ở các câu này, và `page` không phân biệt được thứ tự đọc vì cả hai cột nằm cùng một trang. PDF do công cụ khác xuất (InDesign, bản scan có OCR) có thể có thứ tự ghi khác, kết quả dưới đây không nói được gì về chúng.
 
 Thay đổi: `read_pdf(path, *, chunk_size, mode)`, `mode` là `"plain"` (cách cũ) hoặc `"layout"` (`extract_text(extraction_mode="layout")`); `eval.py` thêm cờ `--pdf-mode`.
+
+Lưu ý: so sánh này đo ở kích thước đoạn 500, chưa phải 800 như cấu hình cuối (mục 5 đổi sau). Chưa đo lại `layout` ở 800; chênh lệch giữa hai chế độ nhỏ nên giữ `plain`, nhưng đây không phải số đo ở cấu hình cuối.
 
 Lệnh đã chạy (trạng thái giữ ở mục 3, `--chunk-size` mặc định 500):
 
@@ -267,8 +269,51 @@ Câu đổi hạng (so với 500, hạng của đoạn đúng):
 
 Chặn nhầm vẫn 0,00, cosine thấp nhất của câu có đáp án vẫn 0,8313 ở cả ba mức (ngưỡng 0,81 còn nguyên). Thời gian nạp 1,7 đến 1,9 giây.
 
-**Quyết định (sau phán quyết của người điều phối): ĐỔI `CHUNK_SIZE = 800`, `INGEST_VERSION` lên 3.** Quy tắc ràng buộc nói `MRR` phân xử khi `vitri@5` bằng nhau, và Task 3 đã giữ `BIGRAMS = True` đúng theo cách đó (vitri@5 bằng nhau, MRR 0,769 so với 0,754), nên áp dụng giống hệt ở đây. 300 và 800 bằng nhau về `vitri@5` (34/35) và MRR (0,87), cùng cao hơn 500 (0,85). Giữa 300 và 800, chọn 800 vì `file@1` 0,94 so với 0,91 và không làm xấu `hai-cot`, trong khi 300 đẩy câu "hệ thống ERP bảo trì lúc mấy giờ" xuống hạng 5. Chi phí index lại tài liệu cũ do Task 8 xử lý (đó là việc của `INGEST_VERSION`). Vẫn là bằng chứng hẹp: mức tăng đến từ hạng của 2 câu trên 2 đoạn văn dài, nên khi có tài liệu thật dài cần đo lại bằng `--chunk-size`.
+**Quyết định (sau phán quyết của người điều phối): ĐỔI `CHUNK_SIZE = 800`, `INGEST_VERSION` lên 3.** Quy tắc ràng buộc nói `MRR` phân xử khi `vitri@5` bằng nhau, và Task 3 đã giữ `BIGRAMS = True` đúng theo cách đó (vitri@5 bằng nhau, MRR 0,769 so với 0,754), nên áp dụng giống hệt ở đây. 300 và 800 bằng nhau về `vitri@5` (34/35) và MRR (0,87), cùng cao hơn 500 (0,85). Giữa 300 và 800, chọn 800 vì `file@1` 0,94 so với 0,91 và không làm xấu `hai-cot`, trong khi 300 đẩy câu "hệ thống ERP bảo trì lúc mấy giờ" xuống hạng 5. Chi phí index lại tài liệu cũ do `INGEST_VERSION` xử lý (mục 6). Vẫn là bằng chứng hẹp: mức tăng đến từ hạng của 2 câu trên 2 đoạn văn dài, nên khi có tài liệu thật dài cần đo lại bằng `--chunk-size`.
 
 Lần chạy xác nhận mặc định đã đổi (`cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus`, không cờ): tổng vitri@5 0,97 (34/35), MRR 0,87, file@1 0,94, file@5 1,00; dien-dat-khac MRR 0,92, hai-cot 1,00 (MRR 1,00), khong-dau 0,75 (MRR 0,38), bang 1,00 (MRR 0,92). Khớp cột 800 ở bảng trên.
 
-**`INGEST_VERSION = 3`** vì cách cắt đoạn đổi; tài liệu nạp với phiên bản 2 cần index lại (Task 8). `PDF_MODE` vẫn `"plain"`.
+**`INGEST_VERSION = 3`** vì cách cắt đoạn đổi; tài liệu nạp với phiên bản 2 cần index lại (mục 6). `PDF_MODE` vẫn `"plain"`.
+
+## 6. Kết luận
+
+Số đo cuối lấy từ một lần chạy mới `cd backend && ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus` (cùng bộ mẫu: 44 câu, 35 có đáp án, 9 không liên quan; dữ liệu giả).
+
+### Cấu hình cuối
+
+| Mục | Giá trị | Ở đâu | Mục báo cáo |
+|---|---|---|---|
+| Tách từ | cặp tiếng + bỏ dấu, `BIGRAMS = True`, `UNACCENT = True` | `backend/search.py` | 1 |
+| Ngưỡng không liên quan | `MIN_RELEVANCE = 0.81` (cosine nhánh vector; biến môi trường `MIN_RELEVANCE` ghi đè) | `backend/ask.py` | 2 |
+| Bảng Word | dòng `Cột: giá trị` kèm mục và số dòng; dòng tiêu đề vẫn nạp như đoạn thường | `backend/ingest.py` | 3 |
+| Excel | lặp giá trị ô gộp; cắt dòng dài hơn `ROW_MAX_CHARS = 1200`; tiêu đề hai dòng tắt (`GROUP_HEADER = False`) | `backend/ingest.py` | 3 |
+| PDF | `PDF_MODE = "plain"` | `backend/ingest.py` | 4 |
+| Kích thước đoạn | `CHUNK_SIZE = 800` | `backend/ingest.py` | 5 |
+| Phiên bản đọc file | `INGEST_VERSION = 3`; tài liệu cũ hơn tự index lại khi khởi động | `backend/ingest.py`, `backend/worker.py` | 5 |
+
+Tài liệu đã nạp bằng phiên bản cũ: khi máy chủ khởi động, mỗi tài liệu có phiên bản thấp hơn được xếp hàng index lại từ file gốc đã lưu. Bản cũ vẫn tìm được trong lúc chờ; index lại lỗi thì giữ bản cũ.
+
+### Số đo ban đầu so với cuối
+
+| Chỉ số | Ban đầu (mục 0) | Cuối |
+|---|---|---|
+| vitri@5 (35 câu có đáp án) | 0,77 (27/35) | **0,97 (34/35)** |
+| MRR | 0,73 | **0,87** |
+| file@1 | 0,89 | 0,94 |
+| file@5 | 0,91 | **1,00** |
+| khong-dau vitri@5 | 0/4 | **3/4** |
+| bang vitri@5 | 0,50 (3/6) | 1,00 (6/6) |
+| khong-lien-quan, bắt được | 0/9 (chưa có ngưỡng) | **3/9** (0,33) |
+| Chặn nhầm | 0,00 | 0,00 |
+| Tìm mỗi câu (trung vị / p95) | 0,009 giây / 0,012 giây | 0,009 giây / 0,014 giây |
+| Nạp cả bộ mẫu | 2,4 giây | 2,3 giây |
+
+Cosine thấp nhất của câu có đáp án là 0,8313; cosine cao nhất của câu không liên quan là 0,8942.
+
+### Còn lại và đề xuất cho đợt sau
+
+- **Reranker** (cross-encoder chấm lại cặp câu hỏi và đoạn): `bat_duoc` chỉ 3/9, dưới một nửa. Ngưỡng cosine chỉ chặn được câu lạc đề hẳn; câu cùng chủ đề công ty mà tài liệu không có (nghỉ kết hôn, làm thêm giờ ngày lễ, làm việc từ xa, học phí) vẫn lọt, vì cosine 0,85 đến 0,89 nằm lẫn với câu có đáp án.
+- **Đo lại ngưỡng trên tài liệu thật.** 0,81 đặt từ bộ mẫu nhỏ, dữ liệu giả, và model cho cosine dồn vào dải hẹp (0,79 đến 0,93). Cần ít nhất vài chục câu thật, cả câu có đáp án lẫn câu không có.
+- **Ưu tiên bản quy định mới.** Bộ mẫu có hai bản quy định nghỉ phép (2023, 2025); hiện chưa có gì cho hệ thống biết bản nào còn hiệu lực. Cần ngày hiệu lực của từng tài liệu (do người nạp khai hoặc lấy từ nội dung) rồi mới ưu tiên được bản mới.
+- **Câu không dấu còn trượt:** "nghi phep nam bao nhieu ngay" ra đúng hai file nghỉ phép nhưng hạng 1 đến 5 toàn đoạn khác mục 1 (số ngày nghỉ phép). Chưa có đề xuất rõ; xem lại cùng reranker.
+- **Bằng chứng hẹp ở vài chỗ:** PDF hai cột (mẫu tự dựng, 3 câu), kích thước đoạn (2 câu đổi hạng), nhóm `bang` (một phần mức tăng là do nay ghi được vị trí dòng). Khi có tài liệu thật thì đo lại bằng `--pdf-mode`, `--chunk-size`.

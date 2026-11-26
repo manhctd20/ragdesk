@@ -1,6 +1,6 @@
 # Thiết kế: đo và nâng chất lượng tìm kiếm
 
-> **Trạng thái (26/11/2026):** người dùng đã duyệt. Kế hoạch: `docs/2026-11-26-ke-hoach-chat-luong-tim-kiem.md`.
+> **Trạng thái (26/11/2026):** người dùng đã duyệt; đã triển khai trên nhánh `feat/chat-luong-tim-kiem`. Kế hoạch: `docs/2026-11-26-ke-hoach-chat-luong-tim-kiem.md`.
 > Nền: thiết kế đợt 1 `docs/2026-11-20-thiet-ke.md` (**TK1**) và đợt 2A `docs/2026-11-25-thiet-ke-dot-2a.md` (**TK2A**).
 > Quy ước: **[Người dùng chốt]** là điều người dùng đã nói; **[Claude đề xuất]** là đề xuất của Claude, đã trình bày khi bàn và người dùng đồng ý hướng, vẫn sửa được khi duyệt.
 

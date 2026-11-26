@@ -51,11 +51,19 @@ Khai một, hai hoặc cả ba nhà đều được. Thứ tự nhà luôn là C
 | `GEMINI_API_KEY` + `GEMINI_MODEL` | | | Như trên, cho Gemini |
 | `DATA_DIR` | | `./data` | Nơi lưu file gốc, SQLite và index |
 | `MAX_UPLOAD_MB` | | `20` | Cỡ tối đa mỗi file |
-| `MIN_RELEVANCE` | | `0.81` | Ngưỡng cosine "không liên quan": đoạn vector tốt nhất thấp hơn thì không gọi AI trả lời (xem báo cáo chất lượng tìm kiếm, mục 2) |
+| `MIN_RELEVANCE` | | `0.81` | Ngưỡng cosine "không liên quan": đoạn vector tốt nhất thấp hơn thì không gọi AI trả lời, giao diện hiện "Không tìm thấy đoạn nào đủ liên quan" (cách chọn: [báo cáo](bao-cao-chat-luong-tim-kiem.md), mục 2). Nâng lên thì chặn nhiều hơn nhưng dễ giấu nhầm câu có đáp án; hạ xuống thì ngược lại |
 | `FASTEMBED_CACHE_PATH` | | `/tmp/fastembed_cache` | Nơi lưu model embedding. Nên đặt ra ngoài `/tmp` |
 | `ANONYMIZED_TELEMETRY` | | | Đặt `False` để Chroma không gửi telemetry |
 
 Chỉ khai key mà thiếu tên model (hoặc ngược lại) thì nhà đó coi như chưa khai. Không có nhà nào khai đủ thì công tắc AI ngoài bị khoá dù `ALLOW_EXTERNAL=true`.
+
+## Sau khi nâng cấp: tài liệu cũ tự index lại
+
+Cách đọc file có số phiên bản (`INGEST_VERSION` trong `backend/ingest.py`, hiện là 3). Khởi động máy chủ sau khi nâng cấp mà đổi phiên bản thì tài liệu `Sẵn sàng` nhưng đọc bằng phiên bản cũ hơn sẽ tự được index lại từ file gốc trong `DATA_DIR/files/`, lần lượt từng file ở nền. Không cần làm gì.
+
+- Trong lúc chờ, bản cũ vẫn tìm được; xong thì thay bằng bản mới.
+- Index lại lỗi thì giữ bản cũ và ghi cảnh báo vào log (`re-index of doc ... failed`).
+- Dòng log `queued N documents for re-index` cho biết có bao nhiêu file được xếp hàng. Nhiều file thì lần đầu sẽ chậm (CPU).
 
 ## Dữ liệu và sao lưu
 
@@ -87,4 +95,23 @@ DATA_DIR=../data FASTEMBED_CACHE_PATH=../data/models ANONYMIZED_TELEMETRY=False 
   .venv/bin/python eval.py <file câu hỏi>.json
 ```
 
-Kết quả là tỉ lệ câu có đúng file nằm trong top 5, kèm danh sách câu trượt. Đây là số liệu dùng để quyết định có cần thêm reranker hay tách từ tiếng Việt ở đợt sau không.
+Kết quả là tỉ lệ câu có đúng file nằm trong top 5, kèm danh sách câu trượt. Đây là số liệu dùng để quyết định có cần thêm reranker ở đợt sau không.
+
+### Bộ mẫu `--corpus`
+
+Bộ tài liệu giả (10 file, 44 câu hỏi) nằm ở `backend/eval_data/`, dựng lại bằng `make_corpus.py`. Chế độ này nạp bộ mẫu vào Chroma tạm (không đụng `DATA_DIR`) và in số đo theo nhóm câu: `vitri@5` (đúng file và đúng vị trí trong top 5), `MRR`, `file@1`, `file@5`, tỉ lệ câu không liên quan bị chặn (`bắt được`) và câu có đáp án bị chặn nhầm.
+
+```bash
+cd backend
+ANONYMIZED_TELEMETRY=False .venv/bin/python eval.py --corpus [cờ]
+```
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--chunk-size N` | Đổi kích thước đoạn (mặc định 800) |
+| `--pdf-mode plain\|layout` | Cách lấy chữ từ PDF (mặc định `plain`) |
+| `--no-bigrams` | Tắt cặp tiếng khi tách từ |
+| `--no-unaccent` | Tắt bản bỏ dấu khi tách từ |
+| `--min-relevance X` | Đổi ngưỡng không liên quan, để thử |
+
+Chạy không cờ cho số đo của cấu hình hiện tại; chạy lại sau mỗi thay đổi cách tách từ hay cách đọc file. Kết quả đã đo và cách chọn cấu hình: [báo cáo chất lượng tìm kiếm](bao-cao-chat-luong-tim-kiem.md). Dạng cũ `eval.py <file câu hỏi>.json` (đo trên `DATA_DIR` thật) vẫn dùng được và cũng nhận `--min-relevance`.

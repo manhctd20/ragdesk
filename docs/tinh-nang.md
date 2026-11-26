@@ -1,6 +1,6 @@
 # Tính năng chi tiết
 
-Mô tả đầy đủ những gì hệ thống đang làm được (đến đợt 2A), các giới hạn và các lưu ý về riêng tư. Bản tóm tắt ở [README](../README.md).
+Mô tả đầy đủ những gì hệ thống đang làm được (đến đợt 2A và đợt nâng chất lượng tìm kiếm), các giới hạn và các lưu ý về riêng tư. Bản tóm tắt ở [README](../README.md).
 
 ## Làm được gì
 
@@ -9,6 +9,7 @@ Mô tả đầy đủ những gì hệ thống đang làm được (đến đợ
 - Chọn hoặc kéo thả nhiều file một lần; file được gửi lần lượt. File sai đuôi hoặc quá cỡ bị báo riêng, các file còn lại vẫn gửi.
 - Xếp tài liệu theo **một cấp thư mục**, có bộ lọc theo thư mục. Thư mục đang lọc nằm trên URL (`/tai-lieu?thu-muc=...`).
 - Index chạy nền từng file một, có tiến độ `đoạn x/y`.
+- **Tài liệu nạp bằng cách đọc file cũ sẽ tự index lại.** Mỗi tài liệu nhớ phiên bản cách đọc đã dùng; khi khởi động, máy chủ xếp hàng index lại từ file gốc những tài liệu có phiên bản cũ hơn bản hiện tại (hiện là 3). Bản cũ vẫn tìm được trong lúc chờ; index lại lỗi thì giữ bản cũ. Không cần tải lên lại.
 - **Tải lên trùng tên trong cùng thư mục là thay file.** Bản cũ vẫn tìm được cho tới khi bản mới index xong. Bản mới lỗi thì giữ nguyên bản cũ.
 - Báo lỗi rõ từng file: PDF chỉ có ảnh scan, PDF có mật khẩu, file hỏng, file không có chữ.
 - Xoá có xác nhận ngay trong dòng. File đang index thì chưa xoá được.
@@ -16,12 +17,14 @@ Mô tả đầy đủ những gì hệ thống đang làm được (đến đợ
 
 **Cách đọc file**
 - PDF: theo trang, giữ số trang.
-- Word: theo đoạn văn, giữ tiêu đề mục gần nhất (Heading 1–3). Bảng trong Word đọc từng dòng.
-- Excel: mỗi sheet lấy dòng đầu có dữ liệu làm tên cột. **Mỗi dòng sau đó thành một đoạn** dạng `Cột A: giá trị; Cột B: giá trị`, kèm tên sheet và số dòng. Lấy giá trị đã tính, không lấy công thức.
-- PDF và Word được cắt thành đoạn khoảng 500 ký tự, chồng lấn khoảng 100.
+- Word: theo đoạn văn, giữ tiêu đề mục gần nhất (Heading 1–3). **Mỗi dòng của bảng là một đoạn riêng**, ghi kèm mục chứa bảng và số dòng. Nếu dòng đầu chắc chắn là tiêu đề cột thì các dòng sau đọc dạng `Cột: giá trị; Cột: giá trị` (bỏ ô trống); dòng tiêu đề vẫn được nạp thêm như một đoạn thường. Không chắc là tiêu đề thì nối các ô bằng `; `.
+- Excel: mỗi sheet lấy dòng đầu có dữ liệu làm tên cột. **Mỗi dòng sau đó thành một đoạn** dạng `Cột A: giá trị; Cột B: giá trị`, kèm tên sheet và số dòng. Lấy giá trị đã tính, không lấy công thức. Ô gộp: giá trị được áp cho mọi ô nó phủ. Dòng dài hơn 1200 ký tự được cắt thành nhiều đoạn, mỗi đoạn giữ sheet và số dòng.
+- PDF và chữ thường của Word được cắt thành đoạn khoảng 800 ký tự, chồng lấn khoảng 160.
 
 **Tìm kiếm**
 - Hybrid: tìm theo nghĩa bằng vector (`intfloat/multilingual-e5-small`, chạy CPU trên máy chủ) cộng tìm theo từ khoá (BM25). Hai kết quả được trộn bằng RRF, giữ **5 đoạn** tốt nhất.
+- Tìm từ khoá tách theo từng tiếng, **thêm cặp tiếng liền nhau** (ví dụ `nghỉ_phép`) **và bản bỏ dấu** của mỗi tiếng. Nhờ đó gõ không dấu ("nghi phep nam bao nhieu ngay") vẫn ra đúng đoạn, và từ ghép tiếng Việt khớp tốt hơn. Từ được tô màu vẫn là các tiếng có dấu trong đoạn.
+- **Ngưỡng "không liên quan":** nếu đoạn giống câu hỏi nhất (theo vector) có độ giống (cosine) dưới `0.81` thì không gọi AI trả lời. Giao diện hiện "Không tìm thấy đoạn nào đủ liên quan" và nút **Xem các đoạn gần nhất** để mở 5 đoạn tìm được, phòng khi ngưỡng chặn nhầm. Áp dụng cả hai chế độ. Chỉnh bằng biến `MIN_RELEVANCE` (xem [Vận hành](van-hanh.md)).
 - Mỗi đoạn hiện tên file, vị trí (trang / mục / sheet + dòng), và tô màu các từ khớp với câu hỏi.
 
 **Hai chế độ trả lời** (công tắc cạnh ô hỏi)
@@ -48,8 +51,8 @@ Mô tả đầy đủ những gì hệ thống đang làm được (đến đợ
 - **Không phân quyền.** Ai vào được mạng nội bộ cũng đọc được nội dung mọi tài liệu qua câu hỏi. Chỉ nạp tài liệu cả team được xem.
 - **Mật khẩu quản trị dùng chung** và đi qua HTTP thường trong LAN. Nên đặt sau HTTPS khi triển khai thật.
 - **PDF scan (chỉ có ảnh) không đọc được**, file báo lỗi. Chưa có OCR.
-- **Tìm từ khoá tách theo từng tiếng**, nên kém với từ ghép tiếng Việt. Phần tìm theo nghĩa bù lại phần lớn.
-- **Không có ngưỡng "không liên quan":** đã có tài liệu thì luôn trả 5 đoạn, kể cả khi câu hỏi lạc đề.
+- **Ngưỡng "không liên quan" mới bắt được câu lạc đề hẳn** (thời tiết, bóng đá…). Câu cùng chủ đề công ty mà tài liệu không có (ví dụ hỏi về nghỉ kết hôn khi tài liệu không nói) vẫn ra 5 đoạn gần nhất, vì độ giống lẫn với câu có đáp án. Trên bộ mẫu bắt được 3/9 câu không liên quan, không chặn nhầm câu có đáp án nào. Ngưỡng đặt từ dữ liệu giả, cần đo lại trên tài liệu thật; muốn bắt được loại còn lại thì cần reranker (xem [Lộ trình](lo-trinh.md)).
+- **Chưa biết bản quy định nào còn hiệu lực.** Có hai bản cùng chủ đề (ví dụ nghỉ phép 2023 và 2025) thì cả hai đều hiện, không ưu tiên bản mới.
 - **Hỏi nối tiếp chỉ nhìn 3 lượt gần nhất,** mỗi câu hỏi tối đa 2.000 ký tự và mỗi câu trả lời tối đa 8.000 ký tự (dài hơn thì bị cắt khi gửi). Đổi nhà giữa cuộc hỏi thì nhà mới chỉ nhận câu hỏi hiện tại, vì không được xem lượt của nhà khác. Ở chế độ nội bộ, đổi chủ đề trong cùng cuộc hỏi có thể làm tìm lệch vì câu trước vẫn được ghép vào.
 - **Chưa có nút "Dừng"** khi câu trả lời đang hiện dần. Mất kết nối giữa chừng thì lượt đó không được lưu, bấm "Thử lại".
 - **Index chạy trên CPU,** file lớn sẽ chậm.
